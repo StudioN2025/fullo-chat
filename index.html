@@ -234,16 +234,14 @@
         </div>
     </div>
 
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    
-    <!-- PeerJS для P2P соединений (опционально, можно не использовать) -->
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- PeerJS для P2P соединений -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
     <!-- Наши скрипты - ВАЖЕН ПОРЯДОК -->
-    <script src="js/firebase-config.js"></script>
+    <script src="js/supabase-config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/peer.js"></script>
     <script src="js/room.js"></script>
@@ -260,10 +258,10 @@
             return false;
         };
 
-        // Проверка подключения к Firebase при загрузке
+        // Проверка подключения к Supabase при загрузке
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM fully loaded');
-            console.log('Firebase loaded:', typeof firebase !== 'undefined');
+            console.log('Supabase loaded:', typeof window.supabase !== 'undefined');
             console.log('Auth loaded:', !!window.auth);
             console.log('Peer loaded:', !!window.peer);
             console.log('Room loaded:', !!window.room);
@@ -339,23 +337,6 @@
         window.addEventListener('load', function() {
             console.log('Window fully loaded');
             console.log('Final check - window.room:', window.room);
-            
-            // Очистка старых записей о киках
-            const user = firebase.auth().currentUser;
-            if (user) {
-                const keysToRemove = [];
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith('kicked_' + user.uid)) {
-                        const kickTime = parseInt(localStorage.getItem(key));
-                        const now = Date.now();
-                        if (now - kickTime > 60000) {
-                            keysToRemove.push(key);
-                        }
-                    }
-                }
-                keysToRemove.forEach(function(key) { localStorage.removeItem(key); });
-            }
         });
 
         // Отдельная проверка для room методов
@@ -384,27 +365,34 @@
         if (window.room && typeof window.room.getCurrentRoom === 'function' && window.room.getCurrentRoom()) {
             console.log('Page unloading, leaving room');
             const roomId = window.room.getCurrentRoom();
-            const user = firebase.auth().currentUser;
+            const user = window.auth?.getCurrentUser?.();
             if (roomId && user) {
-                localStorage.setItem('lastRoom_' + user.uid, roomId);
+                localStorage.setItem('lastRoom_' + user.id, roomId);
             }
             window.room.leaveRoom();
         }
     });
 
     window.addEventListener('load', function() {
-        const user = firebase.auth().currentUser;
+        const user = window.auth?.getCurrentUser?.();
         if (user) {
-            const lastRoom = localStorage.getItem('lastRoom_' + user.uid);
+            const lastRoom = localStorage.getItem('lastRoom_' + user.id);
             if (lastRoom) {
-                localStorage.removeItem('lastRoom_' + user.uid);
-                db.collection('rooms').doc(lastRoom).collection('participants').doc(user.uid).update({
-                    online: false,
-                    leftAt: firebase.firestore.FieldValue.serverTimestamp()
-                }).catch(function() {});
+                localStorage.removeItem('lastRoom_' + user.id);
+                supabase
+                    .from('room_participants')
+                    .update({ online: false })
+                    .eq('room_id', lastRoom)
+                    .eq('user_id', user.id)
+                    .then(() => {
+                        supabase
+                            .from('rooms')
+                            .update({ participants: supabase.sql`array_remove(participants, ${user.id})` })
+                            .eq('id', lastRoom);
+                    });
             }
         }
     });
     </script>
 </body>
-    </html>
+</html>
