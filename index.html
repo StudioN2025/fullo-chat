@@ -253,7 +253,7 @@
             if (window.auth && window.auth.showError) {
                 window.auth.showError('Произошла ошибка: ' + msg);
             } else {
-                alert('Произошла ошибка: ' + msg);
+                alert('Произошла ошибка: ' + msg + '\nСтрока: ' + line);
             }
             return false;
         };
@@ -282,16 +282,17 @@
 
         // Переопределяем методы показа сообщений
         if (window.auth) {
+            const originalShowError = window.auth.showError;
+            const originalShowSuccess = window.auth.showSuccess;
+            
             window.auth.showError = function(text) {
                 showNotification(text, 'error');
-                const errorEl = document.getElementById('errorMessage');
-                if (errorEl) errorEl.textContent = text;
+                if (originalShowError) originalShowError.call(this, text);
             };
 
             window.auth.showSuccess = function(text) {
                 showNotification(text, 'success');
-                const successEl = document.getElementById('successMessage');
-                if (successEl) successEl.textContent = text;
+                if (originalShowSuccess) originalShowSuccess.call(this, text);
             };
         }
 
@@ -337,15 +338,43 @@
         window.addEventListener('load', function() {
             console.log('Window fully loaded');
             console.log('Final check - window.room:', window.room);
+            console.log('Final check - window.auth:', window.auth);
+            console.log('Final check - window.peer:', window.peer);
+            
+            // Очистка старых записей о киках
+            const user = window.auth?.getCurrentUser?.();
+            if (user) {
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('kicked_' + user.id)) {
+                        const kickTime = parseInt(localStorage.getItem(key));
+                        const now = Date.now();
+                        if (now - kickTime > 60000) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                }
+                keysToRemove.forEach(function(key) { localStorage.removeItem(key); });
+            }
         });
 
-        // Отдельная проверка для room методов
+        // Отдельная проверка для модулей
         setTimeout(function() {
             console.log('Delayed check - window.room:', window.room);
+            console.log('Delayed check - window.auth:', window.auth);
+            console.log('Delayed check - window.peer:', window.peer);
+            
             if (!window.room) {
                 console.error('window.room is still undefined! Check room.js for errors');
             } else {
                 console.log('room methods:', Object.keys(window.room));
+            }
+            
+            if (!window.auth) {
+                console.error('window.auth is still undefined! Check auth.js for errors');
+            } else {
+                console.log('auth methods:', Object.keys(window.auth));
             }
         }, 1000);
 
@@ -369,7 +398,9 @@
             if (roomId && user) {
                 localStorage.setItem('lastRoom_' + user.id, roomId);
             }
-            window.room.leaveRoom();
+            if (window.room.leaveRoom) {
+                window.room.leaveRoom();
+            }
         }
     });
 
@@ -377,18 +408,22 @@
         const user = window.auth?.getCurrentUser?.();
         if (user) {
             const lastRoom = localStorage.getItem('lastRoom_' + user.id);
-            if (lastRoom) {
+            if (lastRoom && window.supabase) {
                 localStorage.removeItem('lastRoom_' + user.id);
-                supabase
+                window.supabase
                     .from('room_participants')
                     .update({ online: false })
                     .eq('room_id', lastRoom)
                     .eq('user_id', user.id)
                     .then(() => {
-                        supabase
-                            .from('rooms')
-                            .update({ participants: supabase.sql`array_remove(participants, ${user.id})` })
-                            .eq('id', lastRoom);
+                        return window.supabase
+                            .rpc('remove_participant_from_room', { 
+                                room_id: lastRoom, 
+                                user_id: user.id 
+                            });
+                    })
+                    .catch(function(err) {
+                        console.error('Error cleaning up last room:', err);
                     });
             }
         }
