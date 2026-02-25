@@ -1,6 +1,6 @@
 // Supabase configuration
 const supabaseUrl = 'https://wfqiiqaplrrqtrgzmlor.supabase.co'; // Замените на ваш URL
-const supabaseAnonKey = 'sb_publishable_2s1h8jJ8a6ASlWeJUg3K0Q_8pk5Aw8s'; // Замените на ваш anon key
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmcWlpcWFwbHJycXRyZ3ptbG9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MTE3MzksImV4cCI6MjA4NzQ4NzczOX0.bpPmpgd1a0-vbXucrCnlBEcm1jrLmUiPr6rfXAvUHVo'; // Замените на ваш anon key
 
 // Initialize Supabase client
 const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
