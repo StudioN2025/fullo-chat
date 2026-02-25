@@ -28,8 +28,6 @@ window.room = (function() {
     const participantsCount = document.getElementById('participantsCount');
     const roomContainer = document.getElementById('roomContainer');
     const activeRoomContainer = document.getElementById('activeRoomContainer');
-    const localVideoContainer = document.getElementById('localVideoContainer');
-    const localScreenContainer = document.getElementById('localScreenContainer');
 
     console.log('DOM Elements loaded:', {
         roomCodeInput: !!roomCodeInput,
@@ -83,13 +81,6 @@ window.room = (function() {
             console.error('Error checking ban:', error);
         }
         return false;
-    }
-
-    // Принудительная загрузка участников
-    async function forceLoadParticipants() {
-        if (!currentRoom || leaveInProgress || wasKicked) return;
-        console.log('Force loading participants for room:', currentRoom);
-        await loadParticipants();
     }
 
     // Создание комнаты
@@ -394,6 +385,13 @@ window.room = (function() {
         }
     }
 
+    // Принудительная загрузка участников
+    async function forceLoadParticipants() {
+        if (!currentRoom || leaveInProgress || wasKicked) return;
+        console.log('Force loading participants for room:', currentRoom);
+        await loadParticipants();
+    }
+
     // Слушаем изменения комнаты
     function listenToRoom() {
         if (!currentRoom) return;
@@ -629,10 +627,6 @@ window.room = (function() {
                 .eq('id', currentUser.id)
                 .then(() => console.log('User status updated'));
         }
-
-        // Скрываем видео
-        if (localVideoContainer) localVideoContainer.classList.add('hidden');
-        if (localScreenContainer) localScreenContainer.classList.add('hidden');
 
         if (participantsContainer) participantsContainer.innerHTML = '';
         if (chatMessages) chatMessages.innerHTML = '';
@@ -891,19 +885,24 @@ window.room = (function() {
         if (!videoElement) return;
         
         if (enlargedVideo === userId + type) {
+            // Уменьшаем
             videoElement.classList.remove('enlarged');
+            document.body.classList.remove('video-enlarged');
             enlargedVideo = null;
         } else {
+            // Увеличиваем
             if (enlargedVideo) {
                 const prevId = enlargedVideo.slice(0, -1);
                 const prevType = enlargedVideo.slice(-1) === 'v' ? 'video' : 'screen';
                 const prevVideo = document.getElementById(prevType + '-' + prevId);
-                if (prevVideo) prevVideo.classList.remove('enlarged');
+                if (prevVideo) {
+                    prevVideo.classList.remove('enlarged');
+                }
             }
             
             videoElement.classList.add('enlarged');
+            document.body.classList.add('video-enlarged');
             enlargedVideo = userId + type;
-            videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
@@ -993,10 +992,6 @@ window.room = (function() {
         if (window.peer && typeof window.peer.cleanup === 'function') {
             window.peer.cleanup();
         }
-
-        // Скрываем видео
-        if (localVideoContainer) localVideoContainer.classList.add('hidden');
-        if (localScreenContainer) localScreenContainer.classList.add('hidden');
 
         if (participantsContainer) participantsContainer.innerHTML = '';
         if (chatMessages) chatMessages.innerHTML = '';
@@ -1167,6 +1162,21 @@ window.room = (function() {
             window.auth.showError('Ошибка при удалении комнаты');
         }
     }
+
+    // Обработчик клика для уменьшения видео
+    document.addEventListener('click', function(e) {
+        if (enlargedVideo) {
+            const videoId = enlargedVideo.slice(0, -1);
+            const videoType = enlargedVideo.slice(-1) === 'v' ? 'video' : 'screen';
+            const videoElement = document.getElementById(videoType + '-' + videoId);
+            
+            if (videoElement && !videoElement.contains(e.target) && !e.target.classList.contains('enlarge-video-btn')) {
+                videoElement.classList.remove('enlarged');
+                document.body.classList.remove('video-enlarged');
+                enlargedVideo = null;
+            }
+        }
+    });
 
     console.log('Room module ready');
 
