@@ -1,18 +1,15 @@
-// Auth Module with Supabase
+// Auth Module for Supabase - РАБОЧАЯ ВЕРСИЯ
 window.auth = (function() {
+    console.log('Auth module initializing...');
+    
     let currentUser = null;
     let isAuthModeLogin = true;
-    let userDisplayName = '';
-    let banCheckInterval = null;
-    let onlineHeartbeat = null;
-    let userSettings = {};
 
     // DOM Elements
     const authContainer = document.getElementById('authContainer');
     const profileContainer = document.getElementById('profileContainer');
     const roomContainer = document.getElementById('roomContainer');
     const activeRoomContainer = document.getElementById('activeRoomContainer');
-    const settingsModal = document.getElementById('settingsModal');
     const authTitle = document.getElementById('authTitle');
     const authButton = document.getElementById('authButton');
     const switchAuthButton = document.getElementById('switchAuthButton');
@@ -25,366 +22,242 @@ window.auth = (function() {
     const passwordInput = document.getElementById('passwordInput');
     const profileNameInput = document.getElementById('profileNameInput');
 
-    // Settings Elements
-    const settingsNameInput = document.getElementById('settingsNameInput');
-    const settingsEmailInput = document.getElementById('settingsEmailInput');
-    const settingsStatusSelect = document.getElementById('settingsStatusSelect');
-    const notifyMessages = document.getElementById('notifyMessages');
-    const notifyJoin = document.getElementById('notifyJoin');
-    const notifyLeave = document.getElementById('notifyLeave');
-    const micVolume = document.getElementById('micVolume');
-    const micVolumeValue = document.getElementById('micVolumeValue');
-    const speakerVolume = document.getElementById('speakerVolume');
-    const speakerVolumeValue = document.getElementById('speakerVolumeValue');
-    const avatarInput = document.getElementById('avatarInput');
-    const avatarPreview = document.getElementById('avatarPreview');
+    // Проверяем, что все элементы найдены
+    console.log('DOM Elements loaded:', {
+        authContainer: !!authContainer,
+        profileContainer: !!profileContainer,
+        roomContainer: !!roomContainer,
+        emailInput: !!emailInput
+    });
 
-    // Check current session
+    // Проверка сессии при загрузке
     async function checkSession() {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (session?.user) {
-            handleUser(session.user);
-        } else {
+        try {
+            console.log('Checking session...');
+            const { data: { session }, error } = await supabase.auth.getSession();
+            
+            if (error) {
+                console.error('Session error:', error);
+                showAuthContainer();
+                return;
+            }
+            
+            console.log('Session:', session);
+            
+            if (session?.user) {
+                currentUser = session.user;
+                console.log('User logged in:', currentUser.email);
+                
+                // Проверяем, есть ли пользователь в таблице users
+                const { data: userData, error: userError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', currentUser.id)
+                    .maybeSingle();
+                
+                console.log('User data:', userData);
+                
+                if (userData?.display_name) {
+                    // Профиль заполнен
+                    showRoomContainer(userData.display_name);
+                } else {
+                    // Нужно заполнить профиль
+                    showProfileContainer();
+                }
+            } else {
+                showAuthContainer();
+            }
+        } catch (e) {
+            console.error('Session check error:', e);
             showAuthContainer();
         }
     }
 
-    // Handle authenticated user
-    async function handleUser(user) {
-        currentUser = user;
-        
-        // Check if user is banned
-        const { data: userData, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-        if (userData?.banned) {
-            if (userData.ban_expiry) {
-                const expiryDate = new Date(userData.ban_expiry);
-                if (expiryDate > new Date()) {
-                    handleBannedUser();
-                    return;
-                }
-            } else {
-                handleBannedUser();
-                return;
-            }
-        }
-
-        if (userData?.display_name) {
-            userDisplayName = userData.display_name;
-            userSettings = {
-                displayName: userData.display_name,
-                email: user.email,
-                status: userData.status || 'online',
-                notifyMessages: userData.notify_messages !== false,
-                notifyJoin: userData.notify_join !== false,
-                notifyLeave: userData.notify_leave !== false,
-                micVolume: userData.mic_volume || 80,
-                speakerVolume: userData.speaker_volume || 100,
-                avatar: userData.avatar || null
-            };
-            
-            showRoomContainer(userDisplayName);
-            startOnlineHeartbeat();
-            startBanCheck(user.id);
-        } else {
-            showProfileContainer();
-        }
-    }
-
-    // Listen for auth changes
+    // Слушаем изменения аутентификации
     supabase.auth.onAuthStateChange((event, session) => {
-        console.log('Auth event:', event);
+        console.log('Auth event:', event, session);
+        
         if (event === 'SIGNED_IN' && session?.user) {
-            handleUser(session.user);
+            currentUser = session.user;
+            checkSession(); // Перепроверяем
         } else if (event === 'SIGNED_OUT') {
             currentUser = null;
             showAuthContainer();
-            stopOnlineHeartbeat();
-            stopBanCheck();
         }
     });
 
-    // Check session on load
+    // Запускаем проверку
     checkSession();
 
-    // Show functions
     function showAuthContainer() {
-        authContainer.classList.remove('hidden');
-        profileContainer.classList.add('hidden');
-        roomContainer.classList.add('hidden');
-        activeRoomContainer.classList.add('hidden');
-        settingsModal.classList.add('hidden');
+        console.log('Showing auth container');
+        if (authContainer) authContainer.classList.remove('hidden');
+        if (profileContainer) profileContainer.classList.add('hidden');
+        if (roomContainer) roomContainer.classList.add('hidden');
+        if (activeRoomContainer) activeRoomContainer.classList.add('hidden');
         clearMessages();
     }
 
     function showProfileContainer() {
-        authContainer.classList.add('hidden');
-        profileContainer.classList.remove('hidden');
-        roomContainer.classList.add('hidden');
-        activeRoomContainer.classList.add('hidden');
-        settingsModal.classList.add('hidden');
+        console.log('Showing profile container');
+        if (authContainer) authContainer.classList.add('hidden');
+        if (profileContainer) profileContainer.classList.remove('hidden');
+        if (roomContainer) roomContainer.classList.add('hidden');
+        if (activeRoomContainer) activeRoomContainer.classList.add('hidden');
         clearMessages();
+        
+        if (currentUser?.email && profileNameInput) {
+            profileNameInput.value = currentUser.email.split('@')[0];
+        }
     }
 
     function showRoomContainer(displayName) {
-        authContainer.classList.add('hidden');
-        profileContainer.classList.add('hidden');
-        roomContainer.classList.remove('hidden');
-        activeRoomContainer.classList.add('hidden');
-        settingsModal.classList.add('hidden');
+        console.log('Showing room container for:', displayName);
+        if (authContainer) authContainer.classList.add('hidden');
+        if (profileContainer) profileContainer.classList.add('hidden');
+        if (roomContainer) roomContainer.classList.remove('hidden');
+        if (activeRoomContainer) activeRoomContainer.classList.add('hidden');
         
-        displayNameSpan.textContent = 'Привет, ' + displayName + '!';
-        activeDisplayNameSpan.textContent = displayName;
-        userDisplayName = displayName;
+        if (displayNameSpan) displayNameSpan.textContent = 'Привет, ' + displayName + '!';
+        if (activeDisplayNameSpan) activeDisplayNameSpan.textContent = displayName;
         clearMessages();
     }
 
-    function showActiveRoom() {
-        authContainer.classList.add('hidden');
-        profileContainer.classList.add('hidden');
-        roomContainer.classList.add('hidden');
-        activeRoomContainer.classList.remove('hidden');
-        settingsModal.classList.add('hidden');
-    }
-
     function clearMessages() {
-        errorMessage.textContent = '';
-        successMessage.textContent = '';
+        if (errorMessage) errorMessage.textContent = '';
+        if (successMessage) successMessage.textContent = '';
     }
 
     function showError(text) {
-        errorMessage.textContent = text;
-        successMessage.textContent = '';
+        console.error('Error:', text);
+        if (errorMessage) errorMessage.textContent = text;
+        if (successMessage) successMessage.textContent = '';
         if (window.showNotification) {
             window.showNotification(text, 'error');
         }
     }
 
     function showSuccess(text) {
-        successMessage.textContent = text;
-        errorMessage.textContent = '';
+        console.log('Success:', text);
+        if (successMessage) successMessage.textContent = text;
+        if (errorMessage) errorMessage.textContent = '';
         if (window.showNotification) {
             window.showNotification(text, 'success');
         }
     }
 
-    // Switch between login and signup
     function switchAuthMode() {
         isAuthModeLogin = !isAuthModeLogin;
         if (isAuthModeLogin) {
-            authTitle.textContent = 'Вход в FulloChat';
-            authButton.textContent = 'Войти';
-            switchAuthButton.textContent = 'Создать аккаунт';
-            switchAuthText.textContent = 'Нет аккаунта? Зарегистрируйтесь';
+            if (authTitle) authTitle.textContent = 'Вход в FulloChat';
+            if (authButton) authButton.textContent = 'Войти';
+            if (switchAuthButton) switchAuthButton.textContent = 'Создать аккаунт';
+            if (switchAuthText) switchAuthText.textContent = 'Нет аккаунта? Зарегистрируйтесь';
         } else {
-            authTitle.textContent = 'Регистрация в FulloChat';
-            authButton.textContent = 'Зарегистрироваться';
-            switchAuthButton.textContent = 'Войти';
-            switchAuthText.textContent = 'Уже есть аккаунт? Войдите';
+            if (authTitle) authTitle.textContent = 'Регистрация в FulloChat';
+            if (authButton) authButton.textContent = 'Зарегистрироваться';
+            if (switchAuthButton) switchAuthButton.textContent = 'Войти';
+            if (switchAuthText) switchAuthText.textContent = 'Уже есть аккаунт? Войдите';
         }
         clearMessages();
     }
 
-    // Handle authentication
     async function handleAuth() {
-        const email = emailInput.value.trim();
-        const password = passwordInput.value;
+        const email = emailInput?.value.trim();
+        const password = passwordInput?.value;
 
         if (!email || !password) {
-            showError('Пожалуйста, заполните все поля');
+            showError('Заполните все поля');
             return;
         }
 
         try {
             if (isAuthModeLogin) {
+                console.log('Attempting login:', email);
                 const { data, error } = await supabase.auth.signInWithPassword({
                     email: email,
                     password: password
                 });
                 if (error) throw error;
-                showSuccess('Вход выполнен успешно!');
+                console.log('Login success:', data);
+                showSuccess('Вход выполнен!');
             } else {
+                console.log('Attempting signup:', email);
                 const { data, error } = await supabase.auth.signUp({
                     email: email,
                     password: password
                 });
                 if (error) throw error;
-                showSuccess('Регистрация успешна! Проверьте email для подтверждения.');
+                console.log('Signup success:', data);
+                showSuccess('Регистрация успешна!');
             }
         } catch (error) {
+            console.error('Auth error:', error);
             showError('Ошибка: ' + error.message);
         }
     }
 
-    // Save profile
     async function saveProfile() {
-        const displayName = profileNameInput.value.trim();
+        const displayName = profileNameInput?.value.trim();
         
         if (!displayName) {
-            showError('Пожалуйста, введите ваше имя');
-            return;
-        }
-
-        if (displayName.length > 30) {
-            showError('Имя не должно превышать 30 символов');
+            showError('Введите имя');
             return;
         }
 
         try {
-            const { error } = await supabase
+            console.log('Saving profile for user:', currentUser);
+            
+            const { data, error } = await supabase
                 .from('users')
                 .insert({
                     id: currentUser.id,
                     email: currentUser.email,
                     display_name: displayName,
-                    online: true,
-                    last_seen: new Date().toISOString(),
-                    notify_messages: true,
-                    notify_join: true,
-                    notify_leave: true,
-                    mic_volume: 80,
-                    speaker_volume: 100
+                    online: true
                 });
 
-            if (error) throw error;
+            if (error) {
+                console.error('Insert error:', error);
+                throw error;
+            }
 
-            userDisplayName = displayName;
+            console.log('Profile saved:', data);
             showRoomContainer(displayName);
             showSuccess('Профиль сохранен!');
-            
-            startOnlineHeartbeat();
         } catch (error) {
-            showError('Ошибка сохранения профиля: ' + error.message);
+            console.error('Save profile error:', error);
+            showError('Ошибка: ' + error.message);
         }
     }
 
-    // Logout
     async function logout() {
         try {
-            stopOnlineHeartbeat();
-            stopBanCheck();
-            
-            if (currentUser) {
-                await supabase
-                    .from('users')
-                    .update({ online: false, last_seen: new Date().toISOString() })
-                    .eq('id', currentUser.id);
-            }
-            
-            if (window.room && window.room.getCurrentRoom()) {
-                await window.room.leaveRoom();
-            }
-            
-            if (window.peer) {
-                window.peer.cleanup();
-            }
-            
             await supabase.auth.signOut();
             showSuccess('Выход выполнен');
         } catch (error) {
-            showError('Ошибка выхода: ' + error.message);
+            showError('Ошибка: ' + error.message);
         }
     }
 
-    // Heartbeat для онлайн статуса
-    function startOnlineHeartbeat() {
-        if (onlineHeartbeat) clearInterval(onlineHeartbeat);
-        
-        onlineHeartbeat = setInterval(async function() {
-            if (currentUser && !document.hidden) {
-                await supabase
-                    .from('users')
-                    .update({ 
-                        online: true, 
-                        last_seen: new Date().toISOString() 
-                    })
-                    .eq('id', currentUser.id);
-            }
-        }, 10000);
-    }
+    // Временные заглушки
+    function showSettings() { console.log('Settings not implemented'); }
+    function hideSettings() { console.log('Settings not implemented'); }
+    async function saveSettings() { console.log('Save settings not implemented'); }
 
-    function stopOnlineHeartbeat() {
-        if (onlineHeartbeat) {
-            clearInterval(onlineHeartbeat);
-            onlineHeartbeat = null;
-        }
-    }
+    console.log('Auth module initialized');
 
-    // Проверка бана
-    async function checkIfBanned(userId) {
-        const { data, error } = await supabase
-            .from('users')
-            .select('banned, ban_expiry')
-            .eq('id', userId)
-            .single();
-        
-        if (data?.banned) {
-            if (data.ban_expiry) {
-                const expiryDate = new Date(data.ban_expiry);
-                return expiryDate > new Date();
-            }
-            return true;
-        }
-        return false;
-    }
-
-    function startBanCheck(userId) {
-        if (banCheckInterval) clearInterval(banCheckInterval);
-        
-        banCheckInterval = setInterval(async function() {
-            if (currentUser) {
-                const isBanned = await checkIfBanned(userId);
-                if (isBanned) {
-                    showError('❌ Ваш аккаунт был заблокирован');
-                    
-                    if (window.room && window.room.getCurrentRoom()) {
-                        await window.room.leaveRoom();
-                    }
-                    
-                    await supabase.auth.signOut();
-                }
-            }
-        }, 30000);
-    }
-
-    function stopBanCheck() {
-        if (banCheckInterval) {
-            clearInterval(banCheckInterval);
-            banCheckInterval = null;
-        }
-    }
-
-    function handleBannedUser() {
-        showError('❌ Ваш аккаунт заблокирован');
-        supabase.auth.signOut();
-    }
-
-    // Public API
     return {
         handleAuth: handleAuth,
         switchAuthMode: switchAuthMode,
         saveProfile: saveProfile,
         logout: logout,
+        showSettings: showSettings,
+        hideSettings: hideSettings,
+        saveSettings: saveSettings,
         showError: showError,
         showSuccess: showSuccess,
-        showActiveRoom: showActiveRoom,
-        showSettings: function() { /* TODO */ },
-        hideSettings: function() { /* TODO */ },
-        saveSettings: async function() { /* TODO */ },
         getCurrentUser: function() { return currentUser; },
-        getUserDisplayName: function() { return userDisplayName; },
-        getUserSettings: function() { return userSettings; },
-        updateOnlineStatus: async function(online) {
-            if (currentUser) {
-                await supabase
-                    .from('users')
-                    .update({ online: online, last_seen: new Date().toISOString() })
-                    .eq('id', currentUser.id);
-            }
-        }
+        getUserDisplayName: function() { return activeDisplayNameSpan?.textContent || ''; }
     };
 })();
