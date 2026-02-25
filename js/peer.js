@@ -533,27 +533,30 @@ window.peer = (function() {
             });
         }
 
-        // Handle ICE candidates
-        pc.onicecandidate = function(event) {
-            if (event.candidate && currentRoom && userId) {
-                console.log('Generated ICE candidate for:', targetUserId);
-                window.supabase
-                    .from('ice_candidates')
-                    .insert({
-                        room_id: currentRoom,
-                        from_user_id: userId,
-                        to_user_id: targetUserId,
-                        candidate: {
-                            candidate: event.candidate.candidate,
-                            sdpMid: event.candidate.sdpMid,
-                            sdpMLineIndex: event.candidate.sdpMLineIndex
-                        }
-                    }).catch(function(err) { 
-                        console.error('Error sending ICE candidate:', err);
-                    });
-            }
-        };
-
+       // Handle ICE candidates
+pc.onicecandidate = function(event) {
+    if (event.candidate && currentRoom && userId) {
+        console.log('Generated ICE candidate for:', targetUserId);
+        window.supabase
+            .from('ice_candidates')
+            .insert({
+                room_id: currentRoom,
+                from_user_id: userId,
+                to_user_id: targetUserId,
+                candidate: {
+                    candidate: event.candidate.candidate,
+                    sdpMid: event.candidate.sdpMid,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex
+                }
+            })
+            .then(function() {
+                console.log('ICE candidate sent');
+            })
+            .catch(function(err) { 
+                console.error('Error sending ICE candidate:', err);
+            });
+    }
+};
         // Handle connection state
         pc.onconnectionstatechange = function() {
             console.log('Connection state to', targetUserId, ':', pc.connectionState);
