@@ -1,7 +1,7 @@
 // Auth Module for Supabase - РАБОЧАЯ ВЕРСИЯ
+console.log('Auth module initializing...');
+
 window.auth = (function() {
-    console.log('Auth module initializing...');
-    
     let currentUser = null;
     let isAuthModeLogin = true;
 
@@ -22,7 +22,6 @@ window.auth = (function() {
     const passwordInput = document.getElementById('passwordInput');
     const profileNameInput = document.getElementById('profileNameInput');
 
-    // Проверяем, что все элементы найдены
     console.log('DOM Elements loaded:', {
         authContainer: !!authContainer,
         profileContainer: !!profileContainer,
@@ -34,7 +33,7 @@ window.auth = (function() {
     async function checkSession() {
         try {
             console.log('Checking session...');
-            const { data: { session }, error } = await supabase.auth.getSession();
+            const { data: { session }, error } = await window.supabase.auth.getSession();
             
             if (error) {
                 console.error('Session error:', error);
@@ -49,7 +48,7 @@ window.auth = (function() {
                 console.log('User logged in:', currentUser.email);
                 
                 // Проверяем, есть ли пользователь в таблице users
-                const { data: userData, error: userError } = await supabase
+                const { data: userData, error: userError } = await window.supabase
                     .from('users')
                     .select('*')
                     .eq('id', currentUser.id)
@@ -74,17 +73,21 @@ window.auth = (function() {
     }
 
     // Слушаем изменения аутентификации
-    supabase.auth.onAuthStateChange((event, session) => {
-        console.log('Auth event:', event, session);
-        
-        if (event === 'SIGNED_IN' && session?.user) {
-            currentUser = session.user;
-            checkSession(); // Перепроверяем
-        } else if (event === 'SIGNED_OUT') {
-            currentUser = null;
-            showAuthContainer();
-        }
-    });
+    if (window.supabase) {
+        window.supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth event:', event, session);
+            
+            if (event === 'SIGNED_IN' && session?.user) {
+                currentUser = session.user;
+                checkSession(); // Перепроверяем
+            } else if (event === 'SIGNED_OUT') {
+                currentUser = null;
+                showAuthContainer();
+            }
+        });
+    } else {
+        console.error('Supabase not initialized!');
+    }
 
     // Запускаем проверку
     checkSession();
@@ -174,7 +177,7 @@ window.auth = (function() {
         try {
             if (isAuthModeLogin) {
                 console.log('Attempting login:', email);
-                const { data, error } = await supabase.auth.signInWithPassword({
+                const { data, error } = await window.supabase.auth.signInWithPassword({
                     email: email,
                     password: password
                 });
@@ -183,13 +186,13 @@ window.auth = (function() {
                 showSuccess('Вход выполнен!');
             } else {
                 console.log('Attempting signup:', email);
-                const { data, error } = await supabase.auth.signUp({
+                const { data, error } = await window.supabase.auth.signUp({
                     email: email,
                     password: password
                 });
                 if (error) throw error;
                 console.log('Signup success:', data);
-                showSuccess('Регистрация успешна!');
+                showSuccess('Регистрация успешна! Проверьте email для подтверждения.');
             }
         } catch (error) {
             console.error('Auth error:', error);
@@ -208,7 +211,7 @@ window.auth = (function() {
         try {
             console.log('Saving profile for user:', currentUser);
             
-            const { data, error } = await supabase
+            const { data, error } = await window.supabase
                 .from('users')
                 .insert({
                     id: currentUser.id,
@@ -233,17 +236,26 @@ window.auth = (function() {
 
     async function logout() {
         try {
-            await supabase.auth.signOut();
+            await window.supabase.auth.signOut();
             showSuccess('Выход выполнен');
         } catch (error) {
             showError('Ошибка: ' + error.message);
         }
     }
 
-    // Временные заглушки
-    function showSettings() { console.log('Settings not implemented'); }
-    function hideSettings() { console.log('Settings not implemented'); }
-    async function saveSettings() { console.log('Save settings not implemented'); }
+    // Заглушки для будущих функций
+    function showSettings() { 
+        console.log('Settings not implemented'); 
+        alert('Настройки в разработке');
+    }
+    
+    function hideSettings() { 
+        console.log('Settings not implemented'); 
+    }
+    
+    async function saveSettings() { 
+        console.log('Save settings not implemented'); 
+    }
 
     console.log('Auth module initialized');
 
@@ -261,3 +273,5 @@ window.auth = (function() {
         getUserDisplayName: function() { return activeDisplayNameSpan?.textContent || ''; }
     };
 })();
+
+console.log('Auth module loaded:', !!window.auth);
