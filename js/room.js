@@ -16,6 +16,7 @@ window.room = (function() {
     let kickedListener = null;
     let wasKicked = false;
     let enlargedVideo = null;
+    let loadParticipantsInterval = null;
 
     // DOM Elements
     const roomCodeInput = document.getElementById('roomCodeInput');
@@ -84,6 +85,13 @@ window.room = (function() {
         return false;
     }
 
+    // Принудительная загрузка участников
+    async function forceLoadParticipants() {
+        if (!currentRoom || leaveInProgress || wasKicked) return;
+        console.log('Force loading participants for room:', currentRoom);
+        await loadParticipants();
+    }
+
     // Создание комнаты
     async function createRoom() {
         console.log('createRoom called');
@@ -149,7 +157,7 @@ window.room = (function() {
                 .eq('id', user.id);
 
             // Добавляем участника в комнату
-            await window.supabase
+            const { error: insertError } = await window.supabase
                 .from('room_participants')
                 .insert({
                     room_id: currentRoom,
@@ -157,8 +165,13 @@ window.room = (function() {
                     display_name: displayName,
                     avatar: avatar,
                     is_host: true,
-                    online: true
+                    online: true,
+                    last_seen: new Date().toISOString()
                 });
+
+            if (insertError) throw insertError;
+
+            console.log('Participant added to room');
 
             // Initialize WebRTC
             if (window.peer && typeof window.peer.init === 'function') {
@@ -185,6 +198,12 @@ window.room = (function() {
             listenToRoom();
             listenToParticipants();
             listenToMessages();
+
+            // Принудительно загружаем участников через секунду
+            setTimeout(forceLoadParticipants, 1000);
+            // И каждые 3 секунды для обновления
+            if (loadParticipantsInterval) clearInterval(loadParticipantsInterval);
+            loadParticipantsInterval = setInterval(forceLoadParticipants, 3000);
 
             window.auth.showSuccess('Комната создана! Код: ' + roomCode);
         } catch (error) {
@@ -307,6 +326,7 @@ window.room = (function() {
                         avatar: avatar,
                         is_host: isHost,
                         online: true,
+                        last_seen: new Date().toISOString(),
                         muted: false,
                         camera: false,
                         screen: false
@@ -349,6 +369,11 @@ window.room = (function() {
             listenToRoom();
             listenToParticipants();
             listenToMessages();
+
+            // Принудительно загружаем участников
+            setTimeout(forceLoadParticipants, 1000);
+            if (loadParticipantsInterval) clearInterval(loadParticipantsInterval);
+            loadParticipantsInterval = setInterval(forceLoadParticipants, 3000);
 
             // Отправляем сообщение о подключении
             await window.supabase
@@ -393,7 +418,7 @@ window.room = (function() {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => console.log('Room subscription status:', status));
     }
 
     // Слушаем изменения участников
@@ -416,15 +441,20 @@ window.room = (function() {
                     if (leaveInProgress || wasKicked) return;
                     
                     // Обновляем UI при изменениях
-                    loadParticipants();
+                    forceLoadParticipants();
                 }
             )
-            .subscribe();
+            .subscribe((status) => console.log('Participants subscription status:', status));
     }
 
     // Загрузка участников
     async function loadParticipants() {
-        if (!currentRoom || leaveInProgress || wasKicked) return;
+        if (!currentRoom || leaveInProgress || wasKicked) {
+            console.log('Skipping loadParticipants:', { currentRoom, leaveInProgress, wasKicked });
+            return;
+        }
+
+        console.log('Loading participants for room:', currentRoom);
 
         try {
             const { data: participants, error } = await window.supabase
@@ -433,6 +463,15 @@ window.room = (function() {
                 .eq('room_id', currentRoom);
 
             if (error) throw error;
+
+            console.log('Participants loaded:', participants);
+
+            if (!participants || participants.length === 0) {
+                console.log('No participants found');
+                if (participantsContainer) participantsContainer.innerHTML = '';
+                if (participantsCount) participantsCount.textContent = '0';
+                return;
+            }
 
             const now = Date.now();
             const currentUserId = window.auth?.getCurrentUser?.()?.id;
@@ -447,6 +486,8 @@ window.room = (function() {
                 return diff < 7000;
             });
 
+            console.log('Online participants:', onlineParticipants.length);
+
             if (participantsCount) participantsCount.textContent = onlineParticipants.length;
 
             // Проверяем пустую комнату
@@ -459,6 +500,7 @@ window.room = (function() {
             document.querySelectorAll('.participant-card').forEach(card => {
                 const cardId = card.id.replace('participant-', '');
                 if (!onlineIds.has(cardId) && cardId !== currentUserId) {
+                    console.log('Removing offline participant:', cardId);
                     removeParticipantFromUI(cardId);
                 }
             });
@@ -469,6 +511,7 @@ window.room = (function() {
                 if (card) {
                     updateParticipantInUI(p.user_id, p);
                 } else {
+                    console.log('Adding participant to UI:', p.user_id, p.display_name);
                     addParticipantToUI(p.user_id, p);
                 }
             });
@@ -478,6 +521,7 @@ window.room = (function() {
                 if (p.user_id !== currentUserId) {
                     setTimeout(() => {
                         if (window.peer && typeof window.peer.connectToPeer === 'function') {
+                            console.log('Connecting to peer:', p.user_id);
                             window.peer.connectToPeer(p.user_id);
                         }
                     }, 1000);
@@ -522,7 +566,7 @@ window.room = (function() {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => console.log('Messages subscription status:', status));
     }
 
     // Слушаем кик
@@ -559,7 +603,7 @@ window.room = (function() {
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => console.log('Kick subscription status:', status));
     }
 
     // Принудительный выход
@@ -583,7 +627,7 @@ window.room = (function() {
                     last_seen: new Date().toISOString()
                 })
                 .eq('id', currentUser.id)
-                .then(() => {});
+                .then(() => console.log('User status updated'));
         }
 
         // Скрываем видео
@@ -600,6 +644,7 @@ window.room = (function() {
         if (participantsSubscription) participantsSubscription.unsubscribe();
         if (messagesSubscription) messagesSubscription.unsubscribe();
         if (kickedListener) kickedListener.unsubscribe();
+        if (loadParticipantsInterval) clearInterval(loadParticipantsInterval);
         
         currentRoom = null;
         roomCode = null;
@@ -625,6 +670,10 @@ window.room = (function() {
         if (roomCheckTimeout) {
             clearTimeout(roomCheckTimeout);
             roomCheckTimeout = null;
+        }
+        if (loadParticipantsInterval) {
+            clearInterval(loadParticipantsInterval);
+            loadParticipantsInterval = null;
         }
     }
 
@@ -793,6 +842,7 @@ window.room = (function() {
             controls;
 
         participantsContainer.appendChild(card);
+        console.log('Participant card added to UI:', userId);
     }
 
     // Обновление участника в UI
@@ -956,6 +1006,7 @@ window.room = (function() {
         if (participantsSubscription) participantsSubscription.unsubscribe();
         if (messagesSubscription) messagesSubscription.unsubscribe();
         if (kickedListener) kickedListener.unsubscribe();
+        if (loadParticipantsInterval) clearInterval(loadParticipantsInterval);
         
         currentRoom = null;
         roomCode = null;
@@ -1101,25 +1152,6 @@ window.room = (function() {
             // Закрываем все WebRTC соединения
             if (window.peer && typeof window.peer.cleanup === 'function') {
                 window.peer.cleanup();
-            }
-
-            // Получаем всех участников для обновления их статуса
-            const { data: participants } = await window.supabase
-                .from('room_participants')
-                .select('user_id')
-                .eq('room_id', currentRoom);
-
-            // Обновляем статус каждого участника
-            if (participants) {
-                for (const p of participants) {
-                    await window.supabase
-                        .from('users')
-                        .update({
-                            current_room: null,
-                            last_seen: new Date().toISOString()
-                        })
-                        .eq('id', p.user_id);
-                }
             }
 
             // Удаляем комнату (каскадно удалятся все связанные записи)
