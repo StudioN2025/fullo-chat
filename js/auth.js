@@ -1,9 +1,11 @@
-// Auth Module for Supabase - РАБОЧАЯ ВЕРСИЯ
+// Auth Module for Supabase - ПОЛНАЯ ВЕРСИЯ БЕЗ ПОДТВЕРЖДЕНИЯ EMAIL
 console.log('Auth module initializing...');
 
 window.auth = (function() {
     let currentUser = null;
     let isAuthModeLogin = true;
+    let userDisplayName = '';
+    let onlineHeartbeat = null;
 
     // DOM Elements
     const authContainer = document.getElementById('authContainer');
@@ -58,7 +60,9 @@ window.auth = (function() {
                 
                 if (userData?.display_name) {
                     // Профиль заполнен
+                    userDisplayName = userData.display_name;
                     showRoomContainer(userData.display_name);
+                    startOnlineHeartbeat();
                 } else {
                     // Нужно заполнить профиль
                     showProfileContainer();
@@ -82,7 +86,11 @@ window.auth = (function() {
                 checkSession(); // Перепроверяем
             } else if (event === 'SIGNED_OUT') {
                 currentUser = null;
+                userDisplayName = '';
+                stopOnlineHeartbeat();
                 showAuthContainer();
+            } else if (event === 'USER_UPDATED') {
+                console.log('User updated:', session?.user);
             }
         });
     } else {
@@ -124,6 +132,14 @@ window.auth = (function() {
         if (displayNameSpan) displayNameSpan.textContent = 'Привет, ' + displayName + '!';
         if (activeDisplayNameSpan) activeDisplayNameSpan.textContent = displayName;
         clearMessages();
+    }
+
+    function showActiveRoom() {
+        console.log('Showing active room');
+        if (authContainer) authContainer.classList.add('hidden');
+        if (profileContainer) profileContainer.classList.add('hidden');
+        if (roomContainer) roomContainer.classList.add('hidden');
+        if (activeRoomContainer) activeRoomContainer.classList.remove('hidden');
     }
 
     function clearMessages() {
@@ -174,29 +190,79 @@ window.auth = (function() {
             return;
         }
 
+        if (password.length < 6) {
+            showError('Пароль должен быть минимум 6 символов');
+            return;
+        }
+
         try {
             if (isAuthModeLogin) {
+                // ВХОД
                 console.log('Attempting login:', email);
                 const { data, error } = await window.supabase.auth.signInWithPassword({
                     email: email,
                     password: password
                 });
+                
                 if (error) throw error;
+                
                 console.log('Login success:', data);
                 showSuccess('Вход выполнен!');
+                
             } else {
+                // РЕГИСТРАЦИЯ - без подтверждения email
                 console.log('Attempting signup:', email);
+                
                 const { data, error } = await window.supabase.auth.signUp({
                     email: email,
-                    password: password
+                    password: password,
+                    options: {
+                        // Отключаем email подтверждение
+                        emailRedirectTo: window.location.origin,
+                        data: {
+                            // Метаданные пользователя
+                            registered_at: new Date().toISOString()
+                        }
+                    }
                 });
+                
                 if (error) throw error;
+                
                 console.log('Signup success:', data);
-                showSuccess('Регистрация успешна! Проверьте email для подтверждения.');
+                
+                if (data.user) {
+                    // Сразу входим после регистрации (если Supabase настроен на auto-confirm)
+                    showSuccess('Регистрация успешна! Выполняем вход...');
+                    
+                    // Пробуем автоматически войти
+                    const { error: signInError } = await window.supabase.auth.signInWithPassword({
+                        email: email,
+                        password: password
+                    });
+                    
+                    if (signInError) {
+                        console.error('Auto-login error:', signInError);
+                        showSuccess('Регистрация успешна! Теперь войдите в систему.');
+                    }
+                } else {
+                    showSuccess('Регистрация успешна! Проверьте email для подтверждения.');
+                }
             }
         } catch (error) {
             console.error('Auth error:', error);
-            showError('Ошибка: ' + error.message);
+            
+            // Понятные сообщения об ошибках
+            if (error.message.includes('Email not confirmed')) {
+                showError('Email не подтвержден. Проверьте почту или войдите с другим аккаунтом.');
+            } else if (error.message.includes('Invalid login credentials')) {
+                showError('Неверный email или пароль');
+            } else if (error.message.includes('User already registered')) {
+                showError('Пользователь с таким email уже существует');
+            } else if (error.message.includes('Password should be at least 6 characters')) {
+                showError('Пароль должен быть минимум 6 символов');
+            } else {
+                showError('Ошибка: ' + error.message);
+            }
         }
     }
 
@@ -208,69 +274,204 @@ window.auth = (function() {
             return;
         }
 
+        if (displayName.length > 30) {
+            showError('Имя не должно превышать 30 символов');
+            return;
+        }
+
         try {
             console.log('Saving profile for user:', currentUser);
             
-            const { data, error } = await window.supabase
+            // Проверяем, существует ли уже запись
+            const { data: existingUser } = await window.supabase
                 .from('users')
-                .insert({
-                    id: currentUser.id,
-                    email: currentUser.email,
-                    display_name: displayName,
-                    online: true
-                });
-
-            if (error) {
-                console.error('Insert error:', error);
-                throw error;
+                .select('id')
+                .eq('id', currentUser.id)
+                .maybeSingle();
+            
+            let result;
+            
+            if (existingUser) {
+                // Обновляем существующую запись
+                result = await window.supabase
+                    .from('users')
+                    .update({
+                        display_name: displayName,
+                        online: true,
+                        last_seen: new Date().toISOString()
+                    })
+                    .eq('id', currentUser.id);
+            } else {
+                // Создаем новую запись
+                result = await window.supabase
+                    .from('users')
+                    .insert({
+                        id: currentUser.id,
+                        email: currentUser.email,
+                        display_name: displayName,
+                        online: true,
+                        last_seen: new Date().toISOString()
+                    });
             }
 
-            console.log('Profile saved:', data);
+            if (result.error) throw result.error;
+
+            console.log('Profile saved');
+            userDisplayName = displayName;
             showRoomContainer(displayName);
             showSuccess('Профиль сохранен!');
+            
         } catch (error) {
             console.error('Save profile error:', error);
-            showError('Ошибка: ' + error.message);
+            showError('Ошибка сохранения профиля: ' + error.message);
         }
     }
 
     async function logout() {
         try {
-            await window.supabase.auth.signOut();
+            // Останавливаем heartbeat
+            stopOnlineHeartbeat();
+            
+            // Обновляем статус онлайн
+            if (currentUser) {
+                await window.supabase
+                    .from('users')
+                    .update({ 
+                        online: false, 
+                        last_seen: new Date().toISOString() 
+                    })
+                    .eq('id', currentUser.id);
+            }
+            
+            // Выходим из Supabase
+            const { error } = await window.supabase.auth.signOut();
+            if (error) throw error;
+            
             showSuccess('Выход выполнен');
         } catch (error) {
-            showError('Ошибка: ' + error.message);
+            console.error('Logout error:', error);
+            showError('Ошибка выхода: ' + error.message);
         }
     }
 
-    // Заглушки для будущих функций
+    // Heartbeat для онлайн статуса
+    function startOnlineHeartbeat() {
+        if (onlineHeartbeat) clearInterval(onlineHeartbeat);
+        
+        updateOnlineStatus(true);
+        
+        onlineHeartbeat = setInterval(async () => {
+            if (currentUser && !document.hidden) {
+                await updateOnlineStatus(true);
+            }
+        }, 10000);
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    function stopOnlineHeartbeat() {
+        if (onlineHeartbeat) {
+            clearInterval(onlineHeartbeat);
+            onlineHeartbeat = null;
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    async function updateOnlineStatus(online) {
+        if (!currentUser) return;
+        
+        try {
+            await window.supabase
+                .from('users')
+                .update({ 
+                    online: online, 
+                    last_seen: new Date().toISOString() 
+                })
+                .eq('id', currentUser.id);
+            
+            console.log('Online status updated:', online);
+        } catch (error) {
+            console.error('Error updating online status:', error);
+        }
+    }
+
+    function handleVisibilityChange() {
+        if (currentUser) {
+            if (document.hidden) {
+                setTimeout(() => {
+                    if (document.hidden && currentUser) {
+                        updateOnlineStatus(false);
+                    }
+                }, 30000);
+            } else {
+                updateOnlineStatus(true);
+            }
+        }
+    }
+
+    function handleBeforeUnload() {
+        if (currentUser) {
+            // Используем sendBeacon для надежности
+            const data = {
+                online: false,
+                last_seen: new Date().toISOString()
+            };
+            
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+            navigator.sendBeacon(
+                window.supabase.rest.url + '/rest/v1/users?id=eq.' + currentUser.id,
+                blob
+            );
+        }
+    }
+
+    // Заглушки для будущих функций настроек
     function showSettings() { 
         console.log('Settings not implemented'); 
-        alert('Настройки в разработке');
+        showError('Настройки в разработке');
     }
     
     function hideSettings() { 
         console.log('Settings not implemented'); 
+        const modal = document.getElementById('settingsModal');
+        if (modal) modal.classList.add('hidden');
     }
     
     async function saveSettings() { 
         console.log('Save settings not implemented'); 
+        showError('Сохранение настроек в разработке');
     }
 
     console.log('Auth module initialized');
 
+    // Публичное API
     return {
+        // Основные методы
         handleAuth: handleAuth,
         switchAuthMode: switchAuthMode,
         saveProfile: saveProfile,
         logout: logout,
+        
+        // Настройки
         showSettings: showSettings,
         hideSettings: hideSettings,
         saveSettings: saveSettings,
+        
+        // Уведомления
         showError: showError,
         showSuccess: showSuccess,
+        
+        // Навигация
+        showActiveRoom: showActiveRoom,
+        
+        // Геттеры
         getCurrentUser: function() { return currentUser; },
-        getUserDisplayName: function() { return activeDisplayNameSpan?.textContent || ''; }
+        getUserDisplayName: function() { return userDisplayName; },
+        
+        // Статус онлайн
+        updateOnlineStatus: updateOnlineStatus
     };
 })();
 
