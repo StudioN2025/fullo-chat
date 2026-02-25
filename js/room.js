@@ -41,6 +41,11 @@ window.room = (function() {
         return Math.floor(100000000000 + Math.random() * 900000000000).toString();
     }
 
+    // Генерация уникального ID для комнаты
+    function generateRoomId() {
+        return 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
     // Обновление отображения кода комнаты
     function updateRoomCodeDisplay(code) {
         if (currentRoomCode) currentRoomCode.textContent = code;
@@ -53,7 +58,7 @@ window.room = (function() {
         if (!user) return true;
         
         try {
-            const { data: userData, error } = await supabase
+            const { data: userData, error } = await window.supabase
                 .from('users')
                 .select('banned, ban_expiry')
                 .eq('id', user.id)
@@ -64,12 +69,12 @@ window.room = (function() {
                     const expiryDate = new Date(userData.ban_expiry);
                     if (expiryDate > new Date()) {
                         window.auth.showError('❌ Ваш аккаунт заблокирован');
-                        await supabase.auth.signOut();
+                        await window.supabase.auth.signOut();
                         return true;
                     }
                 } else {
                     window.auth.showError('❌ Ваш аккаунт заблокирован');
-                    await supabase.auth.signOut();
+                    await window.supabase.auth.signOut();
                     return true;
                 }
             }
@@ -96,7 +101,7 @@ window.room = (function() {
         
         try {
             // Получаем данные пользователя
-            const { data: userData, error: userError } = await supabase
+            const { data: userData, error: userError } = await window.supabase
                 .from('users')
                 .select('display_name, avatar')
                 .eq('id', user.id)
@@ -110,10 +115,14 @@ window.room = (function() {
             const displayName = userData.display_name;
             const avatar = userData.avatar;
 
-            // Создаем комнату
-            const { data: roomData, error: roomError } = await supabase
+            // Генерируем уникальный ID для комнаты
+            const roomId = generateRoomId();
+
+            // Создаем комнату с явным ID
+            const { data: roomData, error: roomError } = await window.supabase
                 .from('rooms')
                 .insert({
+                    id: roomId,
                     code: roomCode,
                     host_id: user.id,
                     host_name: displayName,
@@ -130,7 +139,7 @@ window.room = (function() {
             isHost = true;
 
             // Обновляем текущую комнату пользователя
-            await supabase
+            await window.supabase
                 .from('users')
                 .update({ 
                     current_room: currentRoom,
@@ -140,7 +149,7 @@ window.room = (function() {
                 .eq('id', user.id);
 
             // Добавляем участника в комнату
-            await supabase
+            await window.supabase
                 .from('room_participants')
                 .insert({
                     room_id: currentRoom,
@@ -180,7 +189,7 @@ window.room = (function() {
             window.auth.showSuccess('Комната создана! Код: ' + roomCode);
         } catch (error) {
             console.error('Error creating room:', error);
-            window.auth.showError('Ошибка создания комнаты: ' + error.message);
+            window.auth.showError('Ошибка создания комнаты: ' + (error.message || 'Неизвестная ошибка'));
         }
     }
 
@@ -219,7 +228,7 @@ window.room = (function() {
 
         try {
             // Ищем комнату по коду
-            const { data: rooms, error: roomsError } = await supabase
+            const { data: rooms, error: roomsError } = await window.supabase
                 .from('rooms')
                 .select('*')
                 .eq('code', code)
@@ -239,7 +248,7 @@ window.room = (function() {
             isHost = (roomData.host_id === user.id);
 
             // Получаем данные пользователя
-            const { data: userData, error: userError } = await supabase
+            const { data: userData, error: userError } = await window.supabase
                 .from('users')
                 .select('display_name, avatar')
                 .eq('id', user.id)
@@ -254,7 +263,7 @@ window.room = (function() {
             const avatar = userData.avatar;
 
             // Обновляем текущую комнату пользователя
-            await supabase
+            await window.supabase
                 .from('users')
                 .update({ 
                     current_room: currentRoom,
@@ -264,29 +273,32 @@ window.room = (function() {
                 .eq('id', user.id);
 
             // Проверяем, существует ли уже участник
-            const { data: existingParticipant } = await supabase
+            const { data: existingParticipant, error: checkError } = await window.supabase
                 .from('room_participants')
                 .select('*')
                 .eq('room_id', currentRoom)
                 .eq('user_id', user.id)
                 .maybeSingle();
 
+            if (checkError) throw checkError;
+
             if (existingParticipant) {
                 // Обновляем существующего участника
-                await supabase
+                await window.supabase
                     .from('room_participants')
                     .update({
                         online: true,
                         last_seen: new Date().toISOString(),
                         is_host: isHost,
                         display_name: displayName,
-                        avatar: avatar
+                        avatar: avatar,
+                        muted: false
                     })
                     .eq('room_id', currentRoom)
                     .eq('user_id', user.id);
             } else {
                 // Добавляем нового участника
-                await supabase
+                await window.supabase
                     .from('room_participants')
                     .insert({
                         room_id: currentRoom,
@@ -294,13 +306,16 @@ window.room = (function() {
                         display_name: displayName,
                         avatar: avatar,
                         is_host: isHost,
-                        online: true
+                        online: true,
+                        muted: false,
+                        camera: false,
+                        screen: false
                     });
             }
 
             // Добавляем пользователя в массив participants, если его там нет
             if (!roomData.participants.includes(user.id)) {
-                await supabase
+                await window.supabase
                     .from('rooms')
                     .update({ 
                         participants: [...roomData.participants, user.id],
@@ -336,14 +351,15 @@ window.room = (function() {
             listenToMessages();
 
             // Отправляем сообщение о подключении
-            await supabase
+            await window.supabase
                 .from('messages')
                 .insert({
                     room_id: currentRoom,
                     sender_id: 'system',
                     sender_name: '🔔 Система',
                     message: displayName + ' присоединился к комнате',
-                    type: 'join'
+                    type: 'join',
+                    encrypted: true
                 });
 
             window.auth.showSuccess('Подключение к комнате выполнено');
@@ -358,7 +374,7 @@ window.room = (function() {
         if (!currentRoom) return;
         if (roomSubscription) roomSubscription.unsubscribe();
 
-        roomSubscription = supabase
+        roomSubscription = window.supabase
             .channel('room-changes')
             .on(
                 'postgres_changes',
@@ -385,7 +401,7 @@ window.room = (function() {
         if (!currentRoom) return;
         if (participantsSubscription) participantsSubscription.unsubscribe();
 
-        participantsSubscription = supabase
+        participantsSubscription = window.supabase
             .channel('participants-changes')
             .on(
                 'postgres_changes',
@@ -411,11 +427,10 @@ window.room = (function() {
         if (!currentRoom || leaveInProgress || wasKicked) return;
 
         try {
-            const { data: participants, error } = await supabase
+            const { data: participants, error } = await window.supabase
                 .from('room_participants')
                 .select('*')
-                .eq('room_id', currentRoom)
-                .eq('online', true);
+                .eq('room_id', currentRoom);
 
             if (error) throw error;
 
@@ -478,7 +493,7 @@ window.room = (function() {
         if (!currentRoom) return;
         if (messagesSubscription) messagesSubscription.unsubscribe();
 
-        messagesSubscription = supabase
+        messagesSubscription = window.supabase
             .channel('messages-changes')
             .on(
                 'postgres_changes',
@@ -518,7 +533,7 @@ window.room = (function() {
             kickedListener.unsubscribe();
         }
 
-        kickedListener = supabase
+        kickedListener = window.supabase
             .channel('kick-check')
             .on(
                 'postgres_changes',
@@ -561,7 +576,7 @@ window.room = (function() {
 
         // Обновляем статус пользователя
         if (currentUser) {
-            supabase
+            window.supabase
                 .from('users')
                 .update({
                     current_room: null,
@@ -625,7 +640,7 @@ window.room = (function() {
         heartbeatInterval = setInterval(async () => {
             if (currentRoom && user && navigator.onLine && !leaveInProgress && !wasKicked) {
                 try {
-                    await supabase
+                    await window.supabase
                         .from('room_participants')
                         .update({
                             online: true,
@@ -634,7 +649,7 @@ window.room = (function() {
                         .eq('room_id', currentRoom)
                         .eq('user_id', user.id);
                     
-                    await supabase
+                    await window.supabase
                         .from('users')
                         .update({
                             online: true,
@@ -676,15 +691,15 @@ window.room = (function() {
             roomCheckTimeout = setTimeout(async () => {
                 if (currentRoom) {
                     try {
-                        const { count, error } = await supabase
+                        const { data, error } = await window.supabase
                             .from('room_participants')
-                            .select('*', { count: 'exact', head: true })
+                            .select('*')
                             .eq('room_id', currentRoom);
                         
                         if (error) throw error;
                         
-                        if (count <= 1) {
-                            await supabase
+                        if (data.length <= 1) {
+                            await window.supabase
                                 .from('rooms')
                                 .delete()
                                 .eq('id', currentRoom);
@@ -717,6 +732,9 @@ window.room = (function() {
         const currentUserId = window.auth?.getCurrentUser?.()?.id;
         const isCurrentUser = userId === currentUserId;
         const hostBadge = data.is_host ? ' 👑' : '';
+        const mutedIcon = data.muted ? ' 🔇' : '';
+        const cameraIcon = data.camera ? ' 📷' : '';
+        const screenIcon = data.screen ? ' 🖥️' : '';
         
         if (isCurrentUser) {
             card.classList.add('current-user');
@@ -734,12 +752,16 @@ window.room = (function() {
         // Контейнер для видео
         const videoContainer = '<div class="participant-video-container" id="video-container-' + userId + '"></div>';
         
+        // Контейнер для экрана
+        const screenContainer = '<div class="participant-screen-container" id="screen-container-' + userId + '"></div>';
+        
         // Кнопка увеличения
         const enlargeButton = '<button class="enlarge-video-btn hidden" id="enlarge-' + userId + '" onclick="if(window.room) window.room.enlargeVideo(\'' + userId + '\', \'video\')">🔍 Увеличить</button>';
         
         // Контролы для хоста
         let controls = '';
-        if (isHost && !isCurrentUser && !data.is_host) {
+        const currentUserIsHost = isHost;
+        if (currentUserIsHost && !isCurrentUser && !data.is_host) {
             controls = '<div class="participant-controls">' +
                 '<button class="mute-btn" onclick="if(window.room) window.room.' + (data.muted ? 'unmuteParticipant' : 'muteParticipant') + '(\'' + userId + '\')">' +
                     (data.muted ? '🔊 Включить звук' : '🔇 Заглушить') +
@@ -759,11 +781,12 @@ window.room = (function() {
                         (isCurrentUser ? '<span class="current-user-badge">(Вы)</span>' : '') +
                     '</div>' +
                     '<div class="participant-status" id="status-' + userId + '">' +
-                        '🟢 В сети' + (data.muted ? ' 🔇' : '') + (data.camera ? ' 📷' : '') + (data.screen ? ' 🖥️' : '') +
+                        '🟢 В сети' + mutedIcon + cameraIcon + screenIcon +
                     '</div>' +
                 '</div>' +
             '</div>' +
             videoContainer +
+            screenContainer +
             '<div class="participant-video-controls">' +
                 enlargeButton +
             '</div>' +
@@ -780,10 +803,10 @@ window.room = (function() {
         // Обновляем статус
         const statusDiv = card.querySelector('.participant-status');
         if (statusDiv) {
-            statusDiv.innerHTML = '🟢 В сети' + 
-                (data.muted ? ' 🔇' : '') + 
-                (data.camera ? ' 📷' : '') + 
-                (data.screen ? ' 🖥️' : '');
+            const mutedIcon = data.muted ? ' 🔇' : '';
+            const cameraIcon = data.camera ? ' 📷' : '';
+            const screenIcon = data.screen ? ' 🖥️' : '';
+            statusDiv.innerHTML = '🟢 В сети' + mutedIcon + cameraIcon + screenIcon;
         }
         
         // Обновляем кнопку увеличения
@@ -852,17 +875,8 @@ window.room = (function() {
         
         if (currentRoom && user) {
             try {
-                // Обновляем статус пользователя
-                await supabase
-                    .from('users')
-                    .update({
-                        current_room: null,
-                        last_seen: new Date().toISOString()
-                    })
-                    .eq('id', user.id);
-
                 // Получаем имя пользователя
-                const { data: userData } = await supabase
+                const { data: userData } = await window.supabase
                     .from('users')
                     .select('display_name')
                     .eq('id', user.id)
@@ -871,18 +885,19 @@ window.room = (function() {
                 const displayName = userData?.display_name || 'Пользователь';
                 
                 // Отправляем сообщение о выходе
-                await supabase
+                await window.supabase
                     .from('messages')
                     .insert({
                         room_id: currentRoom,
                         sender_id: 'system',
                         sender_name: '🔔 Система',
                         message: displayName + ' покинул комнату',
-                        type: 'leave'
+                        type: 'leave',
+                        encrypted: true
                     });
 
                 // Обновляем статус участника
-                await supabase
+                await window.supabase
                     .from('room_participants')
                     .update({
                         online: false,
@@ -892,12 +907,32 @@ window.room = (function() {
                     .eq('user_id', user.id);
 
                 // Удаляем пользователя из массива participants
-                await supabase
+                const { data: roomData } = await window.supabase
                     .from('rooms')
+                    .select('participants')
+                    .eq('id', currentRoom)
+                    .single();
+                
+                if (roomData) {
+                    const updatedParticipants = roomData.participants.filter(id => id !== user.id);
+                    await window.supabase
+                        .from('rooms')
+                        .update({
+                            participants: updatedParticipants,
+                            last_active: new Date().toISOString()
+                        })
+                        .eq('id', currentRoom);
+                }
+
+                // Обновляем статус пользователя
+                await window.supabase
+                    .from('users')
                     .update({
-                        participants: supabase.sql`array_remove(participants, ${user.id})`
+                        current_room: null,
+                        last_seen: new Date().toISOString()
                     })
-                    .eq('id', currentRoom);
+                    .eq('id', user.id);
+                    
             } catch (error) {
                 console.error('Error leaving room:', error);
             }
@@ -934,25 +969,171 @@ window.room = (function() {
         if (roomCodeInput) roomCodeInput.value = '';
     }
 
-    // Заглушки для методов хоста
+    // Заглушить участника (только для хоста)
     async function muteParticipant(userId) {
         if (!isHost || !currentRoom) return;
-        console.log('Mute participant:', userId);
+        try {
+            await window.supabase
+                .from('room_participants')
+                .update({ muted: true })
+                .eq('room_id', currentRoom)
+                .eq('user_id', userId);
+            
+            window.auth.showSuccess('Участник заглушен');
+        } catch (error) {
+            console.error('Error muting participant:', error);
+        }
     }
 
+    // Включить звук участника (только для хоста)
     async function unmuteParticipant(userId) {
         if (!isHost || !currentRoom) return;
-        console.log('Unmute participant:', userId);
+        try {
+            await window.supabase
+                .from('room_participants')
+                .update({ muted: false })
+                .eq('room_id', currentRoom)
+                .eq('user_id', userId);
+            
+            window.auth.showSuccess('Звук включен');
+            
+            // Переподключаемся для восстановления аудио
+            if (window.peer && typeof window.peer.connectToPeer === 'function') {
+                setTimeout(() => {
+                    window.peer.connectToPeer(userId);
+                }, 1000);
+            }
+        } catch (error) {
+            console.error('Error unmuting participant:', error);
+        }
     }
 
+    // Выгнать участника (только для хоста)
     async function kickParticipant(userId) {
         if (!isHost || !currentRoom || userId === currentUser?.id) return;
-        console.log('Kick participant:', userId);
+        
+        try {
+            // Получаем имя участника
+            const { data: participant } = await window.supabase
+                .from('room_participants')
+                .select('display_name')
+                .eq('room_id', currentRoom)
+                .eq('user_id', userId)
+                .single();
+            
+            const participantName = participant?.display_name || 'Участник';
+
+            // Закрываем WebRTC соединение
+            if (window.peer && typeof window.peer.closeConnection === 'function') {
+                window.peer.closeConnection(userId);
+            }
+
+            // Удаляем участника из комнаты
+            await window.supabase
+                .from('room_participants')
+                .delete()
+                .eq('room_id', currentRoom)
+                .eq('user_id', userId);
+
+            // Удаляем из массива participants
+            const { data: roomData } = await window.supabase
+                .from('rooms')
+                .select('participants')
+                .eq('id', currentRoom)
+                .single();
+            
+            if (roomData) {
+                const updatedParticipants = roomData.participants.filter(id => id !== userId);
+                await window.supabase
+                    .from('rooms')
+                    .update({ participants: updatedParticipants })
+                    .eq('id', currentRoom);
+            }
+
+            // Обновляем статус пользователя
+            await window.supabase
+                .from('users')
+                .update({
+                    current_room: null,
+                    last_seen: new Date().toISOString()
+                })
+                .eq('id', userId);
+
+            // Отправляем сообщение о кике
+            await window.supabase
+                .from('messages')
+                .insert({
+                    room_id: currentRoom,
+                    sender_id: 'system',
+                    sender_name: '👑 Система',
+                    message: participantName + ' был удален из комнаты',
+                    type: 'kick',
+                    target_user_id: userId,
+                    encrypted: true
+                });
+            
+            window.auth.showSuccess('Участник удален');
+        } catch (error) {
+            console.error('Error kicking participant:', error);
+            window.auth.showError('Ошибка при удалении участника');
+        }
     }
 
+    // Удалить комнату (только для хоста)
     async function deleteRoom() {
         if (!isHost || !currentRoom) return;
-        console.log('Delete room');
+        
+        if (!confirm('Вы уверены, что хотите удалить комнату? Все участники будут отключены.')) return;
+        
+        try {
+            // Отправляем сообщение о удалении
+            await window.supabase
+                .from('messages')
+                .insert({
+                    room_id: currentRoom,
+                    sender_id: 'system',
+                    sender_name: '👑 Система',
+                    message: 'Комната была удалена создателем',
+                    type: 'room_deleted',
+                    encrypted: true
+                });
+
+            // Закрываем все WebRTC соединения
+            if (window.peer && typeof window.peer.cleanup === 'function') {
+                window.peer.cleanup();
+            }
+
+            // Получаем всех участников для обновления их статуса
+            const { data: participants } = await window.supabase
+                .from('room_participants')
+                .select('user_id')
+                .eq('room_id', currentRoom);
+
+            // Обновляем статус каждого участника
+            if (participants) {
+                for (const p of participants) {
+                    await window.supabase
+                        .from('users')
+                        .update({
+                            current_room: null,
+                            last_seen: new Date().toISOString()
+                        })
+                        .eq('id', p.user_id);
+                }
+            }
+
+            // Удаляем комнату (каскадно удалятся все связанные записи)
+            await window.supabase
+                .from('rooms')
+                .delete()
+                .eq('id', currentRoom);
+            
+            window.auth.showSuccess('Комната удалена');
+            forceLeave();
+        } catch (error) {
+            console.error('Error deleting room:', error);
+            window.auth.showError('Ошибка при удалении комнаты');
+        }
     }
 
     console.log('Room module ready');
@@ -967,9 +1148,9 @@ window.room = (function() {
         kickParticipant: kickParticipant,
         deleteRoom: deleteRoom,
         enlargeVideo: enlargeVideo,
-        getCurrentRoom: function() { return currentRoom; },
-        getRoomCode: function() { return roomCode; },
-        isCurrentUserHost: function() { return isHost; }
+        getCurrentRoom: () => currentRoom,
+        getRoomCode: () => roomCode,
+        isCurrentUserHost: () => isHost
     };
 })();
 
