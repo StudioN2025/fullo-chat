@@ -200,7 +200,7 @@ button.logout-btn:hover {
     border-radius: 10px;
     color: white;
     font-weight: 500;
-    z-index: 1000;
+    z-index: 10000;
     animation: slideIn 0.3s ease;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
@@ -291,39 +291,6 @@ button.logout-btn:hover {
 
 .screen-button.active {
     background: #48bb78;
-}
-
-/* Видео-контейнеры */
-.local-video-container,
-.local-screen-container {
-    margin: 20px 0;
-    padding: 15px;
-    background: #f7fafc;
-    border-radius: 15px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-
-.local-video-container.hidden,
-.local-screen-container.hidden {
-    display: none;
-}
-
-#localVideo,
-#localScreen {
-    width: 100%;
-    max-width: 400px;
-    border-radius: 10px;
-    background: #2d3748;
-    margin: 0 auto;
-    display: block;
-}
-
-.video-label,
-.screen-label {
-    text-align: center;
-    margin-top: 10px;
-    color: #4a5568;
-    font-weight: 500;
 }
 
 /* Стили для карточек участников */
@@ -455,12 +422,14 @@ button.logout-btn:hover {
     aspect-ratio: 16/9;
     position: relative;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
 }
 
 .participant-video-container:hover {
     transform: scale(1.02);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    border-color: #667eea;
 }
 
 .participant-video {
@@ -468,20 +437,12 @@ button.logout-btn:hover {
     height: 100%;
     object-fit: cover;
     background: #2d3748;
+    transition: all 0.3s ease;
 }
 
-.participant-video.enlarged {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90vw;
-    height: 90vh;
-    object-fit: contain;
-    z-index: 1000;
-    background: black;
-    border-radius: 10px;
-    box-shadow: 0 0 50px rgba(0,0,0,0.5);
+/* Зеркальное отображение для своей камеры */
+.participant-video.mirror {
+    transform: scaleX(-1);
 }
 
 /* Контейнер для экрана в карточке */
@@ -494,12 +455,14 @@ button.logout-btn:hover {
     aspect-ratio: 16/9;
     position: relative;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
 }
 
 .participant-screen-container:hover {
     transform: scale(1.02);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    border-color: #9f7aea;
 }
 
 .participant-screen {
@@ -507,40 +470,68 @@ button.logout-btn:hover {
     height: 100%;
     object-fit: contain;
     background: #2d3748;
+    transition: all 0.3s ease;
 }
 
+/* Увеличенное видео */
+.participant-video.enlarged,
 .participant-screen.enlarged {
     position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) scale(1);
     width: 90vw;
     height: 90vh;
     object-fit: contain;
-    z-index: 1000;
+    z-index: 2000;
     background: black;
     border-radius: 10px;
     box-shadow: 0 0 50px rgba(0,0,0,0.5);
+    border: 3px solid #48bb78;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+/* Для зеркального видео в увеличенном режиме */
+.participant-video.mirror.enlarged {
+    transform: translate(-50%, -50%) scaleX(-1);
+}
+
+/* Затемнение фона при увеличении */
+body.video-enlarged::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 1999;
+    pointer-events: none;
 }
 
 /* Кнопка увеличения видео */
 .enlarge-video-btn {
-    background: rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.6);
     color: white;
     border: 2px solid white;
-    padding: 5px 10px;
-    border-radius: 20px;
-    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
     margin: 5px auto;
     width: auto;
     display: inline-block;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
 }
 
 .enlarge-video-btn:hover {
     background: rgba(0,0,0,0.8);
     transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
 }
 
 .enlarge-video-btn.hidden {
@@ -553,10 +544,61 @@ button.logout-btn:hover {
     margin: 5px 0;
 }
 
-/* Для карточки текущего пользователя */
-.participant-card.current-user .participant-avatar {
-    border-color: #48bb78;
-    box-shadow: 0 0 0 2px #48bb78;
+/* Индикаторы активности */
+.participant-video-container::after {
+    content: '📹';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.participant-screen-container::after {
+    content: '🖥️';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.participant-video-container:hover::after,
+.participant-screen-container:hover::after {
+    opacity: 1;
+}
+
+/* Анимация для плавного увеличения */
+@keyframes enlargeFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.participant-video.enlarged,
+.participant-screen.enlarged {
+    animation: enlargeFadeIn 0.3s ease forwards;
+}
+
+/* Убираем старые контейнеры */
+.local-video-container,
+.local-screen-container {
+    display: none !important;
 }
 
 .participant-controls {
@@ -799,7 +841,7 @@ button.logout-btn:hover {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 3000;
     backdrop-filter: blur(5px);
 }
 
@@ -1126,4 +1168,149 @@ button.logout-btn:hover {
     
     .room-info button {
         width: 100%;
-  
+    }
+    
+    .media-controls {
+        flex-direction: column;
+    }
+    
+    .mic-button,
+    .camera-button,
+    .screen-button {
+        width: 100%;
+    }
+    
+    .participant-controls {
+        flex-direction: column;
+    }
+    
+    .mute-btn, .kick-btn {
+        width: 100%;
+    }
+    
+    .host-buttons {
+        flex-direction: column;
+    }
+    
+    .delete-room-btn {
+        width: 100%;
+    }
+    
+    .message {
+        max-width: 90%;
+    }
+    
+    .chat-input-container {
+        flex-direction: column;
+    }
+    
+    .chat-send {
+        width: 100%;
+    }
+    
+    /* Модальное окно на мобильных */
+    .modal-content {
+        width: 95%;
+        margin: 10px;
+        max-height: 95vh;
+    }
+    
+    .modal-footer {
+        flex-direction: column;
+    }
+    
+    .modal-footer button {
+        width: 100%;
+    }
+    
+    .settings-range input[type="range"] {
+        width: 100%;
+        margin-bottom: 5px;
+    }
+    
+    .settings-range span {
+        display: block;
+        width: 100%;
+        text-align: center;
+    }
+    
+    .settings-btn {
+        width: 100%;
+    }
+    
+    .user-info {
+        flex-wrap: wrap;
+    }
+    
+    .participant-video.enlarged,
+    .participant-screen.enlarged {
+        width: 95vw;
+        height: 95vh;
+    }
+    
+    .enlarge-video-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+}
+
+/* Маленькие экраны */
+@media (max-width: 480px) {
+    h2 {
+        font-size: 24px;
+    }
+    
+    .room-code-number {
+        font-size: 20px;
+        letter-spacing: 2px;
+    }
+    
+    .participant-card {
+        padding: 15px;
+    }
+    
+    .participant-name {
+        font-size: 16px;
+    }
+    
+    .modal-header h3 {
+        font-size: 18px;
+    }
+    
+    .avatar-preview {
+        width: 80px;
+        height: 80px;
+        font-size: 40px;
+    }
+    
+    .participant-avatar {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+    
+    .participant-name {
+        font-size: 14px;
+    }
+    
+    .participant-status {
+        font-size: 11px;
+    }
+}
+
+/* Печать */
+@media print {
+    body {
+        background: white;
+        padding: 0;
+    }
+    
+    .container {
+        box-shadow: none;
+        padding: 10px;
+    }
+    
+    button, .media-controls, .chat-input-container {
+        display: none;
+    }
+}
