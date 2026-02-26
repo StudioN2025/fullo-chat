@@ -157,7 +157,10 @@ window.room = (function() {
                     avatar: avatar,
                     is_host: true,
                     online: true,
-                    last_seen: new Date().toISOString()
+                    last_seen: new Date().toISOString(),
+                    muted: false,
+                    camera: false,
+                    screen: false
                 });
 
             if (insertError) throw insertError;
@@ -535,8 +538,10 @@ window.room = (function() {
         if (!currentRoom) return;
         if (messagesSubscription) messagesSubscription.unsubscribe();
 
+        console.log('Listening to messages for room:', currentRoom);
+
         messagesSubscription = window.supabase
-            .channel('messages-changes')
+            .channel('messages-channel')
             .on(
                 'postgres_changes',
                 {
@@ -546,25 +551,68 @@ window.room = (function() {
                     filter: 'room_id=eq.' + currentRoom
                 },
                 (payload) => {
-                    console.log('New message:', payload);
+                    console.log('New message received:', payload);
                     if (leaveInProgress || wasKicked) return;
                     
                     const data = payload.new;
+                    const currentUserId = window.auth?.getCurrentUser?.()?.id;
                     
-                    if (data.type === 'kick' && data.target_user_id === currentUser?.id) {
+                    // Системные сообщения
+                    if (data.type === 'kick' && data.target_user_id === currentUserId) {
                         console.log('Kick message received');
                         forceLeave();
                     } else if (data.type === 'room_deleted') {
                         console.log('Room deleted message received');
                         forceLeave();
-                    } else if (data.sender_id !== window.auth?.getCurrentUser?.()?.id) {
+                    } 
+                    // Обычные сообщения
+                    else if (data.sender_id !== currentUserId) {
                         if (window.peer && typeof window.peer.addMessage === 'function') {
                             window.peer.addMessage(data.sender_name, data.message);
+                        } else {
+                            // Fallback если peer не загружен
+                            addMessageToChat(data.sender_name, data.message);
                         }
                     }
                 }
             )
             .subscribe((status) => console.log('Messages subscription status:', status));
+    }
+
+    // Функция для добавления сообщения в чат (на случай если peer не работает)
+    function addMessageToChat(sender, message) {
+        if (!chatMessages) return;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message';
+        messageDiv.innerHTML = '<span class="message-sender">' + sender + ':</span> <span class="message-text">' + message + '</span>';
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Отправка сообщения (если peer не работает)
+    async function sendMessage(message) {
+        if (!currentRoom || !currentUser) {
+            console.log('No room or user');
+            return;
+        }
+
+        try {
+            const { error } = await window.supabase
+                .from('messages')
+                .insert({
+                    room_id: currentRoom,
+                    sender_id: currentUser.id,
+                    sender_name: window.auth?.getUserDisplayName?.() || 'User',
+                    message: message,
+                    encrypted: true
+                });
+
+            if (error) throw error;
+            console.log('Message sent');
+        } catch (error) {
+            console.error('Error sending message:', error);
+        }
     }
 
     // Слушаем кик
@@ -1017,30 +1065,42 @@ window.room = (function() {
 
     // Заглушить участника (только для хоста)
     async function muteParticipant(userId) {
-        if (!isHost || !currentRoom) return;
+        if (!isHost || !currentRoom) {
+            console.log('Not host or no room');
+            return;
+        }
+        
         try {
-            await window.supabase
+            const { error } = await window.supabase
                 .from('room_participants')
                 .update({ muted: true })
                 .eq('room_id', currentRoom)
                 .eq('user_id', userId);
+
+            if (error) throw error;
             
+            console.log('Participant muted:', userId);
             window.auth.showSuccess('Участник заглушен');
         } catch (error) {
             console.error('Error muting participant:', error);
+            window.auth.showError('Ошибка: ' + error.message);
         }
     }
 
     // Включить звук участника (только для хоста)
     async function unmuteParticipant(userId) {
         if (!isHost || !currentRoom) return;
+        
         try {
-            await window.supabase
+            const { error } = await window.supabase
                 .from('room_participants')
                 .update({ muted: false })
                 .eq('room_id', currentRoom)
                 .eq('user_id', userId);
+
+            if (error) throw error;
             
+            console.log('Participant unmuted:', userId);
             window.auth.showSuccess('Звук включен');
             
             // Переподключаемся для восстановления аудио
@@ -1060,12 +1120,14 @@ window.room = (function() {
         
         try {
             // Получаем имя участника
-            const { data: participant } = await window.supabase
+            const { data: participant, error: getError } = await window.supabase
                 .from('room_participants')
                 .select('display_name')
                 .eq('room_id', currentRoom)
                 .eq('user_id', userId)
                 .single();
+            
+            if (getError) throw getError;
             
             const participantName = participant?.display_name || 'Участник';
 
@@ -1075,11 +1137,13 @@ window.room = (function() {
             }
 
             // Удаляем участника из комнаты
-            await window.supabase
+            const { error: deleteError } = await window.supabase
                 .from('room_participants')
                 .delete()
                 .eq('room_id', currentRoom)
                 .eq('user_id', userId);
+
+            if (deleteError) throw deleteError;
 
             // Удаляем из массива participants
             const { data: roomData } = await window.supabase
@@ -1118,6 +1182,7 @@ window.room = (function() {
                     encrypted: true
                 });
             
+            console.log('Participant kicked:', userId);
             window.auth.showSuccess('Участник удален');
         } catch (error) {
             console.error('Error kicking participant:', error);
@@ -1190,6 +1255,7 @@ window.room = (function() {
         kickParticipant: kickParticipant,
         deleteRoom: deleteRoom,
         enlargeVideo: enlargeVideo,
+        sendMessage: sendMessage,
         getCurrentRoom: () => currentRoom,
         getRoomCode: () => roomCode,
         isCurrentUserHost: () => isHost
