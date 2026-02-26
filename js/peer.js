@@ -7,8 +7,6 @@ window.peer = (function() {
     let cameraStream = null;
     let peerConnections = new Map();
     let remoteAudioElements = new Map();
-    let remoteVideoElements = new Map();
-    let remoteScreenElements = new Map();
     let micEnabled = true;
     let cameraEnabled = false;
     let screenSharing = false;
@@ -333,6 +331,10 @@ window.peer = (function() {
                     video.id = 'video-' + userId;
                     video.className = 'participant-video mirror';
                     videoContainer.appendChild(video);
+                    
+                    video.onloadedmetadata = function() {
+                        video.play().catch(e => console.log('Video play error:', e));
+                    };
                 }
                 
                 // Добавляем видео-треки ко всем существующим соединениям
@@ -414,6 +416,10 @@ window.peer = (function() {
                     video.id = 'screen-' + userId;
                     video.className = 'participant-screen';
                     screenContainer.appendChild(video);
+                    
+                    video.onloadedmetadata = function() {
+                        video.play().catch(e => console.log('Screen play error:', e));
+                    };
                 }
                 
                 // Добавляем экранные треки ко всем существующим соединениям
@@ -589,6 +595,7 @@ window.peer = (function() {
 
     // Add remote video to participant card
     function addRemoteVideo(userId, stream) {
+        console.log('Adding remote video for user:', userId);
         const videoContainer = document.getElementById('video-container-' + userId);
         if (!videoContainer) {
             console.log('Video container not found for user:', userId);
@@ -608,12 +615,17 @@ window.peer = (function() {
         video.id = 'video-' + userId;
         video.className = 'participant-video';
         
+        video.onloadedmetadata = function() {
+            video.play().catch(e => console.log('Video play error:', e));
+        };
+        
         // Добавляем обработчик клика для увеличения
         video.addEventListener('click', function() {
             if (window.room) window.room.enlargeVideo(userId, 'video');
         });
         
         videoContainer.appendChild(video);
+        console.log('Video element appended to container');
         
         // Показываем кнопку увеличения
         const enlargeBtn = document.getElementById('enlarge-' + userId);
@@ -626,17 +638,23 @@ window.peer = (function() {
 
     // Add remote screen to participant card
     function addRemoteScreen(userId, stream) {
+        console.log('Adding remote screen for user:', userId);
+        
         // Для экрана создаем отдельный контейнер внутри карточки
         let screenContainer = document.getElementById('screen-container-' + userId);
         
         if (!screenContainer) {
             const card = document.getElementById('participant-' + userId);
-            if (!card) return;
+            if (!card) {
+                console.log('Participant card not found for user:', userId);
+                return;
+            }
             
             screenContainer = document.createElement('div');
             screenContainer.id = 'screen-container-' + userId;
             screenContainer.className = 'participant-screen-container';
             card.appendChild(screenContainer);
+            console.log('Screen container created');
         }
         
         // Remove existing screen if any
@@ -652,12 +670,17 @@ window.peer = (function() {
         video.id = 'screen-' + userId;
         video.className = 'participant-screen';
         
+        video.onloadedmetadata = function() {
+            video.play().catch(e => console.log('Screen play error:', e));
+        };
+        
         // Добавляем обработчик клика для увеличения
         video.addEventListener('click', function() {
             if (window.room) window.room.enlargeVideo(userId, 'screen');
         });
         
         screenContainer.appendChild(video);
+        console.log('Screen element appended');
         
         // Показываем кнопку увеличения
         const enlargeBtn = document.getElementById('enlarge-' + userId);
@@ -843,16 +866,6 @@ window.peer = (function() {
             audio.remove();
         });
         remoteAudioElements.clear();
-        
-        remoteVideoElements.forEach(function(video) {
-            video.remove();
-        });
-        remoteVideoElements.clear();
-        
-        remoteScreenElements.forEach(function(screen) {
-            screen.remove();
-        });
-        remoteScreenElements.clear();
         
         if (localStream) {
             localStream.getTracks().forEach(function(track) {
