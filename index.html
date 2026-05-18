@@ -552,7 +552,7 @@
     <div class="container">
         <!-- Экран входа -->
         <div id="authContainer" class="auth-container">
-            <h2 id="authTitle">🎥 FulloChat</h2>
+            <h2 id="authTitle">FulloChat</h2>
             <div id="errorMessage" class="error-message hidden"></div>
             <div id="successMessage" class="success-message hidden"></div>
             
@@ -573,7 +573,7 @@
 
         <!-- Настройка профиля -->
         <div id="profileContainer" class="profile-container hidden">
-            <h2>📝 Настройка профиля</h2>
+            <h2>Настройка профиля</h2>
             <div class="input-group">
                 <input type="text" id="profileNameInput" placeholder="Ваше имя" maxlength="30">
             </div>
@@ -586,23 +586,23 @@
             <div class="header">
                 <div class="user-info">
                     <span id="displayName"></span>
-                    <span id="peerStatusDisplay" class="peer-status waiting">⏳ Подключение P2P...</span>
+                    <span id="peerStatusDisplay" class="peer-status waiting">Подключение P2P...</span>
                     <button class="settings-btn" id="settingsBtn">⚙️</button>
-                    <button class="logout-btn" id="mainLogoutBtn">🚪 Выйти</button>
+                    <button class="logout-btn" id="mainLogoutBtn">Выйти</button>
                 </div>
             </div>
-            <h2>🚀 Видеочат</h2>
+            <h2>Видеочат</h2>
             
             <div class="input-group">
                 <input type="text" id="roomCodeInput" placeholder="Введите 12-значный код комнаты" maxlength="12">
             </div>
             
-            <button id="joinRoomBtn" disabled>🔗 Подключиться к комнате</button>
-            <button class="secondary" id="createRoomBtn" disabled>✨ Создать новую комнату</button>
+            <button id="joinRoomBtn" disabled>Подключиться к комнате</button>
+            <button class="secondary" id="createRoomBtn" disabled>Создать новую комнату</button>
             
             <div class="switch-text">
-                <p>💡 Создайте комнату и поделитесь кодом с друзьями</p>
-                <p style="font-size: 12px; margin-top: 10px;">🔒 Все данные шифруются, P2P соединение</p>
+                <p>Создайте комнату и поделитесь кодом с друзьями</p>
+                <p style="font-size: 12px; margin-top: 10px;">Все данные шифруются, P2P соединение</p>
             </div>
         </div>
 
@@ -612,11 +612,11 @@
                 <div class="user-info">
                     <span id="activeDisplayName" class="active-name"></span>
                     <button class="settings-btn" id="activeSettingsBtn">⚙️</button>
-                    <button class="logout-btn" id="leaveRoomBtn">🚪 Покинуть</button>
+                    <button class="logout-btn" id="leaveRoomBtn">Покинуть</button>
                 </div>
                 <div class="room-info">
                     <span class="room-id" id="currentRoomCode"></span>
-                    <button class="copy-btn" id="copyRoomCodeBtn">📋 Копировать код</button>
+                    <button class="copy-btn" id="copyRoomCodeBtn">Копировать код</button>
                 </div>
             </div>
 
@@ -626,7 +626,7 @@
             </div>
 
             <div class="encryption-badge">
-                🔒 P2P шифрование | WebRTC Peer-to-Peer
+                P2P шифрование | WebRTC Peer-to-Peer
             </div>
 
             <div class="media-controls">
@@ -638,16 +638,16 @@
             <div id="participantsContainer" class="participants-grid"></div>
 
             <div id="hostControls" class="host-controls hidden">
-                <h3>👑 Управление комнатой</h3>
+                <h3>Управление комнатой</h3>
                 <button class="delete-room-btn" id="deleteRoomBtn">🗑️ Удалить комнату</button>
             </div>
 
             <div class="chat-container">
-                <h3 class="section-title">💬 Чат</h3>
+                <h3 class="section-title">Чат</h3>
                 <div id="chatMessages" class="chat-messages"></div>
                 <div class="chat-input-container">
                     <input type="text" id="chatInput" class="chat-input" placeholder="Введите сообщение..." onkeypress="if(event.key === 'Enter') sendMessage()">
-                    <button class="chat-send" id="sendMsgBtn">📤 Отправить</button>
+                    <button class="chat-send" id="sendMsgBtn">Отправить</button>
                 </div>
             </div>
         </div>
@@ -657,7 +657,7 @@
     <div id="settingsModal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>⚙️ Настройки</h3>
+                <h3>Настройки</h3>
                 <button class="close-btn" id="closeSettingsBtn">&times;</button>
             </div>
             <div class="modal-body">
