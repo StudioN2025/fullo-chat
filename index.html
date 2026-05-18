@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="google-site-verification" content="IXCy0RBb-FBZB9zZKJHPnoesHWFg-WahmwfoU6YW_ZU" />
+    <title>FulloChat - P2P Аудио/Видео чат</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Аутентификация -->
+        <div id="authContainer" class="auth-container">
+            <h2 id="authTitle">Вход в FulloChat</h2>
+            <div id="errorMessage" class="error-message"></div>
+            <div id="successMessage" class="success-message"></div>
+            
+            <div class="input-group">
+                <input type="email" id="emailInput" placeholder="Email" autocomplete="email">
+            </div>
+            <div class="input-group">
+                <input type="password" id="passwordInput" placeholder="Пароль" autocomplete="current-password">
+            </div>
+            
+            <button id="authButton" onclick="if(window.auth) window.auth.handleAuth()">Войти</button>
+            <button class="secondary" id="switchAuthButton" onclick="if(window.auth) window.auth.switchAuthMode()">Создать аккаунт</button>
+            
+            <div class="switch-text">
+                <span id="switchAuthText" onclick="if(window.auth) window.auth.switchAuthMode()">Нет аккаунта? Зарегистрируйтесь</span>
+            </div>
+        </div>
+
+        <!-- Настройка профиля -->
+        <div id="profileContainer" class="profile-container hidden">
+            <h2>Настройка профиля</h2>
+            <div class="input-group">
+                <input type="text" id="profileNameInput" placeholder="Ваше имя" maxlength="30">
+            </div>
+            <button onclick="if(window.auth) window.auth.saveProfile()">Сохранить и продолжить</button>
+            <button class="secondary" onclick="if(window.auth) window.auth.logout()">Выйти</button>
+        </div>
+
+        <!-- Управление комнатой -->
+        <div id="roomContainer" class="room-container hidden">
+            <div class="header">
+                <div class="user-info">
+                    <span id="displayName"></span>
+                    <button class="settings-btn" onclick="if(window.auth) window.auth.showSettings()">⚙️ Настройки</button>
+                    <button class="logout-btn" onclick="if(window.auth) window.auth.logout()">Выйти</button>
+                </div>
+            </div>
+
+            <h2>Комнаты FulloChat</h2>
+            
+            <div class="input-group">
+                <input type="text" id="roomCodeInput" placeholder="Введите 12-значный код комнаты" maxlength="12" pattern="\d*">
+            </div>
+            
+            <button onclick="if(window.room) window.room.joinRoom()">🔗 Подключиться к комнате</button>
+            <button class="secondary" onclick="if(window.room) window.room.createRoom()">✨ Создать новую комнату</button>
+            
+            <div class="switch-text" style="margin-top: 30px;">
+                <p>Создайте комнату и поделитесь 12-значным кодом с друзьями</p>
+            </div>
+        </div>
+
+        <!-- Активная комната -->
+        <div id="activeRoomContainer" class="hidden">
+            <div class="header">
+                <div class="user-info">
+                    <span id="activeDisplayName" class="active-name"></span>
+                    <button class="settings-btn" onclick="if(window.auth) window.auth.showSettings()">⚙️ Настройки</button>
+                    <button class="logout-btn" onclick="if(window.room) window.room.leaveRoom()">🚪 Покинуть комнату</button>
+                </div>
+                <div class="room-info">
+                    <span class="room-id" id="currentRoomCode"></span>
+                    <button class="copy-btn" onclick="if(window.room) window.room.copyRoomCode()">📋 Копировать код</button>
+                </div>
+            </div>
+
+            <div class="room-code-display">
+                <div class="room-code-label">Код комнаты</div>
+                <div class="room-code-number" id="roomCodeDisplay"></div>
+            </div>
+
+            <div class="encryption-badge" id="encryptionBadge">
+                🔒 Сквозное шифрование активно
+            </div>
+
+            <div class="media-controls">
+                <button id="micToggleButton" class="mic-button" onclick="if(window.peer) window.peer.toggleMic()">
+                    🎤 Микрофон вкл
+                </button>
+                <button id="cameraToggleButton" class="camera-button" onclick="if(window.peer) window.peer.toggleCamera()">
+                    📷 Камера выкл
+                </button>
+                <button id="screenShareButton" class="screen-button" onclick="if(window.peer) window.peer.toggleScreenShare()">
+                    🖥️ Поделиться экраном
+                </button>
+            </div>
+
+            <!-- Локальное видео -->
+            <div id="localVideoContainer" class="local-video-container hidden">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="video-label">Ваша камера</div>
+            </div>
+
+            <div id="localScreenContainer" class="local-screen-container hidden">
+                <video id="localScreen" autoplay playsinline muted></video>
+                <div class="screen-label">Ваш экран</div>
+            </div>
+
+            <h3 class="section-title">Участники (<span id="participantsCount">0</span>)</h3>
+            <div id="participantsContainer" class="participants-grid">
+                <!-- Участники будут добавляться сюда -->
+            </div>
+
+            <!-- Панель управления для создателя -->
+            <div id="hostControls" class="host-controls hidden">
+                <h3>👑 Управление комнатой (только для создателя)</h3>
+                <div class="host-buttons">
+                    <button class="delete-room-btn" onclick="if(confirm('Вы уверены, что хотите удалить комнату? Все участники будут отключены.') && window.room) window.room.deleteRoom()">
+                        🗑️ Удалить комнату
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-container">
+                <h3 class="section-title">Чат комнаты</h3>
+                <div id="chatMessages" class="chat-messages"></div>
+                <div class="chat-input-container">
+                    <input type="text" id="chatInput" class="chat-input" placeholder="Введите сообщение... (🔒 зашифровано)" onkeypress="if(event.key === 'Enter' && window.peer) window.peer.sendMessage()">
+                    <button class="chat-send" onclick="if(window.peer) window.peer.sendMessage()">📤 Отправить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно настроек -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ Настройки профиля</h3>
+                <button onclick="if(window.auth) window.auth.hideSettings()" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-avatar">
+                    <div class="avatar-preview" id="avatarPreview">👤</div>
+                    <button class="change-avatar-btn" onclick="document.getElementById('avatarInput').click()">
+                        Изменить аватар
+                    </button>
+                    <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                </div>
+                
+                <div class="settings-field">
+                    <label>Имя пользователя</label>
+                    <input type="text" id="settingsNameInput" maxlength="30" placeholder="Введите имя">
+                    <small class="field-hint">Максимум 30 символов</small>
+                </div>
+
+                <div class="settings-field">
+                    <label>Email</label>
+                    <input type="email" id="settingsEmailInput" readonly disabled>
+                    <small class="field-hint">Email нельзя изменить</small>
+                </div>
+
+                <div class="settings-field">
+                    <label>Статус</label>
+                    <select id="settingsStatusSelect">
+                        <option value="online">🟢 В сети</option>
+                        <option value="away">🟡 Отошел</option>
+                        <option value="busy">🔴 Занят</option>
+                        <option value="offline">⚫ Невидимка</option>
+                    </select>
+                </div>
+
+                <div class="settings-section">
+                    <h4>Уведомления</h4>
+                    <div class="settings-checkbox">
+                        <label>
+                            <input type="checkbox" id="notifyMessages" checked>
+                            Звук при новых сообщениях
+                        </label>
+                    </div>
+                    <div class="settings-checkbox">
+                        <label>
+                            <input type="checkbox" id="notifyJoin" checked>
+                            Уведомлять о входе участников
+                        </label>
+                    </div>
+                    <div class="settings-checkbox">
+                        <label>
+                            <input type="checkbox" id="notifyLeave" checked>
+                            Уведомлять о выходе участников
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4>Аудио</h4>
+                    <div class="settings-range">
+                        <label>Громкость микрофона</label>
+                        <input type="range" id="micVolume" min="0" max="100" value="80">
+                        <span id="micVolumeValue">80%</span>
+                    </div>
+                    <div class="settings-range">
+                        <label>Громкость динамиков</label>
+                        <input type="range" id="speakerVolume" min="0" max="100" value="100">
+                        <span id="speakerVolumeValue">100%</span>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4>Безопасность</h4>
+                    <div class="security-info">
+                        <p>🔒 Все сообщения и медиа-потоки шифруются</p>
+                        <p>🛡️ P2P соединение (без серверов)</p>
+                        <p>🔐 Сквозное шифрование (E2EE)</p>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4>О программе</h4>
+                    <div class="about-info">
+                        <p><strong>FulloChat</strong> v2.0.0</p>
+                        <p>P2P аудио/видео чат с шифрованием</p>
+                        <p>Разработано для кружка информатики</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="if(window.auth) window.auth.hideSettings()" class="cancel-btn">Отмена</button>
+                <button onclick="if(window.auth) window.auth.saveSettings()" class="save-btn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- PeerJS для P2P соединений -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <!-- Наши скрипты - ВАЖЕН ПОРЯДОК -->
+    <script src="js/supabase-config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/peer.js"></script>
+    <script src="js/room.js"></script>
+
+    <script>
+        // Глобальный обработчик ошибок
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('Global error:', msg, 'at', url, 'line', line);
+            if (window.auth && window.auth.showError) {
+                window.auth.showError('Произошла ошибка: ' + msg);
+            } else {
+                alert('Произошла ошибка: ' + msg + '\nСтрока: ' + line);
+            }
+            return false;
+        };
+
+        // Проверка подключения к Supabase при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded');
+            console.log('Supabase loaded:', typeof window.supabase !== 'undefined');
+            console.log('Auth loaded:', !!window.auth);
+            console.log('Peer loaded:', !!window.peer);
+            console.log('Room loaded:', !!window.room);
+        });
+
+        // Система уведомлений
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = 'notification ' + type;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(function() {
+                notification.style.animation = 'slideIn 0.3s reverse';
+                setTimeout(function() { notification.remove(); }, 300);
+            }, 3000);
+        }
+
+        // Переопределяем методы показа сообщений
+        if (window.auth) {
+            const originalShowError = window.auth.showError;
+            const originalShowSuccess = window.auth.showSuccess;
+            
+            window.auth.showError = function(text) {
+                showNotification(text, 'error');
+                if (originalShowError) originalShowError.call(this, text);
+            };
+
+            window.auth.showSuccess = function(text) {
+                showNotification(text, 'success');
+                if (originalShowSuccess) originalShowSuccess.call(this, text);
+            };
+        }
+
+        // Обновление счетчика участников
+        function updateParticipantsCount() {
+            const count = document.querySelectorAll('.participant-card').length;
+            const countEl = document.getElementById('participantsCount');
+            if (countEl) countEl.textContent = count;
+        }
+
+        // Обновление панели создателя
+        function updateHostControls() {
+            const hostControls = document.getElementById('hostControls');
+            if (hostControls && window.room && typeof window.room.isCurrentUserHost === 'function') {
+                if (window.room.isCurrentUserHost()) {
+                    hostControls.classList.remove('hidden');
+                } else {
+                    hostControls.classList.add('hidden');
+                }
+            }
+        }
+
+        // Наблюдатель за изменениями в DOM
+        const observer = new MutationObserver(function(mutations) {
+            updateParticipantsCount();
+            updateHostControls();
+        });
+
+        const participantsContainer = document.getElementById('participantsContainer');
+        if (participantsContainer) {
+            observer.observe(participantsContainer, { childList: true, subtree: true });
+        }
+
+        // Обновление отображения кода комнаты
+        function updateRoomCodeDisplay(code) {
+            const display = document.getElementById('roomCodeDisplay');
+            if (display) {
+                display.textContent = code;
+            }
+        }
+
+        // Ждем полной загрузки страницы
+        window.addEventListener('load', function() {
+            console.log('Window fully loaded');
+            console.log('Final check - window.room:', window.room);
+            console.log('Final check - window.auth:', window.auth);
+            console.log('Final check - window.peer:', window.peer);
+            
+            // Очистка старых записей о киках
+            const user = window.auth?.getCurrentUser?.();
+            if (user) {
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('kicked_' + user.id)) {
+                        const kickTime = parseInt(localStorage.getItem(key));
+                        const now = Date.now();
+                        if (now - kickTime > 60000) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                }
+                keysToRemove.forEach(function(key) { localStorage.removeItem(key); });
+            }
+        });
+
+        // Отдельная проверка для модулей
+        setTimeout(function() {
+            console.log('Delayed check - window.room:', window.room);
+            console.log('Delayed check - window.auth:', window.auth);
+            console.log('Delayed check - window.peer:', window.peer);
+            
+            if (!window.room) {
+                console.error('window.room is still undefined! Check room.js for errors');
+            } else {
+                console.log('room methods:', Object.keys(window.room));
+            }
+            
+            if (!window.auth) {
+                console.error('window.auth is still undefined! Check auth.js for errors');
+            } else {
+                console.log('auth methods:', Object.keys(window.auth));
+            }
+        }, 1000);
+
+        console.log('FulloChat initialized');
+    </script>
+
+    <!-- Только реальное закрытие страницы -->
+    <script>
+    window.addEventListener('pagehide', function() {
+        if (window.room && typeof window.room.getCurrentRoom === 'function' && window.room.getCurrentRoom()) {
+            console.log('Page hidden, leaving room');
+            window.room.leaveRoom();
+        }
+    });
+
+    window.addEventListener('beforeunload', function() {
+        if (window.room && typeof window.room.getCurrentRoom === 'function' && window.room.getCurrentRoom()) {
+            console.log('Page unloading, leaving room');
+            const roomId = window.room.getCurrentRoom();
+            const user = window.auth?.getCurrentUser?.();
+            if (roomId && user) {
+                localStorage.setItem('lastRoom_' + user.id, roomId);
+            }
+            if (window.room.leaveRoom) {
+                window.room.leaveRoom();
+            }
+        }
+    });
+
+    window.addEventListener('load', function() {
+        const user = window.auth?.getCurrentUser?.();
+        if (user) {
+            const lastRoom = localStorage.getItem('lastRoom_' + user.id);
+            if (lastRoom && window.supabase) {
+                localStorage.removeItem('lastRoom_' + user.id);
+                window.supabase
+                    .from('room_participants')
+                    .update({ online: false })
+                    .eq('room_id', lastRoom)
+                    .eq('user_id', user.id)
+                    .then(() => {
+                        return window.supabase
+                            .rpc('remove_participant_from_room', { 
+                                room_id: lastRoom, 
+                                user_id: user.id 
+                            });
+                    })
+                    .catch(function(err) {
+                        console.error('Error cleaning up last room:', err);
+                    });
+            }
+        }
+    });
+    </script>
+</body>
+</html>
